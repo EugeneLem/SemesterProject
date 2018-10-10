@@ -21,11 +21,11 @@ Ts=0.2;
 %constraint
 C_u=[1 0 ; 0,1 ; -1,0 ; 0,-1];
 c_u=[15;4.6;25;10.4];%Need to check is elevator and THS are not inverted
-C_u_delta=[-1 0 1 0;...
-            0 -1 0 1;...
-           1   0 -1 0;...
-           0   1  0  -1];
-c_u_delta=[37;0.236;37;0.236]/Ts;%Need to check is elevator and THS are not inverted
+C_u_delta=[-1 0   1 0;...
+            0 -1  0 1;...
+            1  0 -1 0;...
+            0  1  0 -1];
+c_u_delta=[37;0.236;37;0.236]*Ts;%Need to check is elevator and THS are not inverted
 
 %%MPC
 x=sdpvar(4,horizon);
@@ -49,7 +49,7 @@ ctrl = optimizer(con, obj,ops, [x(:,1),A_k,B_k], u(:,1));
 
 
 %%Let's simulate our system
-stepNumber=100;
+stepNumber=50;
 k_fault=100;
 k_switch=10;  %The time we decide to use GP
 X=zeros(4,stepNumber); 
