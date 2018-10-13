@@ -32,37 +32,44 @@ c_u_delta=[37;0.236;37;0.236]*Ts;%Need to check is elevator and THS are not inve
 x=sdpvar(4,horizon);
 u=sdpvar(2,horizon);
 ops = sdpsettings('verbose',1);
-con=[];
+u_old=sdpvar(2,1);%For the input change constraint, we need the 0 input
+con=[C_u_delta*[u_old;u(:,1)] <= c_u_delta];
 obj = 0;
 for i = 1:horizon-1 
     con = [con , x(:,i+1) == A*x(:,i) + B*u(:,i)]; % System dynamics
     con = [con , C_u*u(:,i) <= c_u];                 % Input constraints
     con = [con , C_u_delta*[u(:,i);u(:,i+1)] <= c_u_delta];  % Input change constraints
-    %obj = obj + x(:,i)'*Q*x(:,i)  + (u(:,i+1)-u(:,i))'*R_delta*(u(:,i+1)-u(:,i));  % Cost function
     obj = obj + x(:,i)'*Q*x(:,i) + u(:,i)'*R*u(:,i) + (u(:,i+1)-u(:,i))'*R_delta*(u(:,i+1)-u(:,i));  % Cost function
 
 end
 obj=obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
-ctrl = optimizer(con, obj,ops, x(:,1), u(:,1));
+ctrl = optimizer(con, obj,ops, {x(:,1),u_old}, u(:,1));
 
 
 %%Let's simulate our system
 stepNumber=100;
 k_fault=2;
 X=zeros(4,stepNumber); 
-U=zeros(2,stepNumber); 
+U=zeros(2,stepNumber-1); 
 X(:,1)=[1;1;1;1];
+U_0=[0;0];
+
 
 for k=1:stepNumber-1                    
-    U(:,k)=ctrl{X(:,k)};
+    if k==1
+        U(:,k)=ctrl{X(:,k),U_0};
+    else
+        U(:,k)=ctrl{X(:,k),U(:,k-1)};
+    end
+    
     if(k>=k_fault)
         U(1,k)=U(1,k-1);
     end
     X(:,k+1)=A*X(:,k)+B*U(:,k);
 end
-U(:,stepNumber)=ctrl{X(:,k)};
-U(1,stepNumber)=U(1,stepNumber-1);
 
+
+%%
 %%PLOT :D
 t=Ts*(0:stepNumber-1);
 figure
@@ -78,8 +85,18 @@ title('AoA')
 
 figure
 subplot(2,1,1)
-plot(t,U(1,:))
+plot(t(1:end-1),U(1,:))
 title('Elevator')
 subplot(2,1,2)
-plot(t,U(2,:))
+plot(t(1:end-1),U(2,:))
 title('THS')
+
+
+dU=(U(:,2:end)-U(:,1:end-1))/Ts;
+figure
+subplot(2,1,1)
+plot(t(1:end-2),dU(1,:))
+title('Elevator slew rate')
+subplot(2,1,2)
+plot(t(1:end-2),dU(2,:))
+title('THS slew rate')

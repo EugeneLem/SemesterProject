@@ -22,18 +22,19 @@ Ts=0.2;
 C_u=[1 0 ; 0,1 ; -1,0 ; 0,-1];
 c_u=[15;4.6;25;10.4];%Need to check is elevator and THS are not inverted
 C_u_delta=[-1 0   1 0;...
-            0 -1 0 1;...
-           1   0 -1 0;...
-           0   1  0  -1];
-c_u_delta=[37;0.236;37;0.236]/Ts;%Need to check is elevator and THS are not inverted
+            0 -1  0 1;...
+            1  0 -1 0;...
+            0  1  0 -1];
+c_u_delta=[37;0.236;37;0.236]*Ts;%Need to check is elevator and THS are not inverted
 
 %%MPC
 x=sdpvar(4,horizon);
 u=sdpvar(2,horizon);
 A_k=sdpvar(4,4);
 B_k=sdpvar(4,2);
+u_0=sdpvar(2,1);
 ops = sdpsettings('verbose',1);
-con=[];
+con=[C_u_delta*[u_0;u(:,1)] <= c_u_delta];
 obj = 0;   
 for i = 1:horizon-1 
     con = [con , x(:,i+1) == A_k*x(:,i) + B_k*u(:,i)]; % System dynamics
@@ -44,13 +45,13 @@ for i = 1:horizon-1
 
 end
 obj=obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
-ctrl = optimizer(con, obj,ops, [x(:,1),A_k,B_k], u(:,1));      
+ctrl = optimizer(con, obj,ops, {x(:,1),A_k,B_k,u_0}, u(:,1));      
 
 
 
 %%Let's simulate our system
-stepNumber=50;
-k_fault=100;
+stepNumber=100;
+k_fault=2;
 k_switch=10;  %The time we decide to use GP
 X=zeros(4,stepNumber); 
 U=zeros(2,stepNumber-1); 
@@ -64,10 +65,11 @@ for k=1:stepNumber-1
     
     
     else   %MPC using GP
-        gprMdl_1 = fitrgp([X(:,1:k-2);U(:,1:k-2)]',X(1,2:k-1)'); %creation of the GP
-        gprMdl_2 = fitrgp([X(:,1:k-2);U(:,1:k-2)]',X(2,2:k-1)');
-        gprMdl_3 = fitrgp([X(:,1:k-2);U(:,1:k-2)]',X(3,2:k-1)');
-        gprMdl_4 = fitrgp([X(:,1:k-2);U(:,1:k-2)]',X(4,2:k-1)');
+        gprMdl_1 = fitrgp([X(:,k_fault:k-2);U(:,k_fault:k-2)]',X(1,k_fault+1:k-1)'); %creation of the GP
+        gprMdl_2 = fitrgp([X(:,k_fault:k-2);U(:,k_fault:k-2)]',X(2,k_fault+1:k-1)'); %creation of the GP
+        gprMdl_3 = fitrgp([X(:,k_fault:k-2);U(:,k_fault:k-2)]',X(3,k_fault+1:k-1)'); %creation of the GP
+        gprMdl_4 = fitrgp([X(:,k_fault:k-2);U(:,k_fault:k-2)]',X(4,k_fault+1:k-1)'); %creation of the GP
+
         
         %reconstruction of A and B
         A_k=[predict(gprMdl_1,[1,0,0,0,0,0]),predict(gprMdl_1,[0,1,0,0,0,0]),predict(gprMdl_1,[0,0,1,0,0,0]),predict(gprMdl_1,[0,0,0,1,0,0]);...
@@ -81,12 +83,13 @@ for k=1:stepNumber-1
             predict(gprMdl_4,[0,0,0,0,1,0]),predict(gprMdl_4,[0,0,0,0,0,1]);...
             ];
         matrix_ratio(:,k)=[norm(abs(A_k-A))/norm(A);norm(abs(B_k-B))/norm(B)];
-        U(:,k)=ctrl{[X(:,k),A_k,B_k]};
+        if k
+        U(:,k)=ctrl{X(:,k),A_k,B_k,U(:,k-1)};
         
           
     end
     
-    %disp(k)
+    disp(k)
     if(k>=k_fault)
         U(1,k)=U(1,k-1);
     end
@@ -123,3 +126,13 @@ title('A_k')
 subplot(2,1,2)
 plot(t(1:end-1),matrix_ratio(2,:))
 title('B_k')
+
+%%
+dU=(U(:,2:end)-U(:,1:end-1))/Ts;
+figure
+subplot(2,1,1)
+plot(t(1:end-2),dU(1,:))
+title('Elevator slew rate')
+subplot(2,1,2)
+plot(t(1:end-2),dU(2,:))
+title('THS slew rate')
