@@ -49,15 +49,15 @@ ctrl = optimizer(con, obj,ops, {x(:,1),A_k,B_k,u_old}, u(:,1));
 
 
 %%Let's simulate our system
-stepNumber=100;
-k_fault=20;
-k_switch=40;  %The time we decide to use GP
+stepNumber=300;
+k_fault=40;
+k_switch=k_fault+1;  %The time we decide to use GP
 X=zeros(4,stepNumber); 
 U=zeros(2,stepNumber-1); 
 X(:,1)=[1;1;1;1];
 U_0=[0;0];
 
-matrix_ratio=zeros(2,stepNumber-1);
+%matrix_ratio=zeros(2,stepNumber-1);
 
 for k=1:stepNumber-1                    
     if(k<=k_switch) %We use a classic MPC =)
@@ -86,18 +86,26 @@ for k=1:stepNumber-1
             predict(gprMdl_3,[0,0,0,0,1,0]),predict(gprMdl_3,[0,0,0,0,0,1]);...
             predict(gprMdl_4,[0,0,0,0,1,0]),predict(gprMdl_4,[0,0,0,0,0,1]);...
             ];
-        matrix_ratio(:,k)=[norm(abs(A_k-A))/norm(A);norm(abs(B_k-B))/norm(B)];
+        %matrix_ratio(:,k)=[norm(abs(A_k-A))/norm(A);norm(abs(B_k-B))/norm(B)];
         
         if k==1
-            [U(:,k),infeasible]=ctrl{X(:,k),A_k,B_k,U_0};
+            [U(:,k),infeasible]=ctrl{X(:,k),A,B,U_0};
+        
         else
-
-            [U(:,k),infeasible]=ctrl{X(:,k),A_k,B_k,U(:,k-1)};
+            error_nominal=mean(vecnorm( X(:,k_fault:k)-A*X(:,k_fault-1:k-1)+B*U(:,k_fault-1:k-1) ));
+            error_GP=mean(vecnorm( X(:,k_fault:k)-A_k*X(:,k_fault-1:k-1)+B_k*U(:,k_fault-1:k-1) ));
+            
+            
+            if error_GP<error_nominal
+                [U(:,k),infeasible]=ctrl{X(:,k),A_k,B_k,U(:,k-1)};
+            else
+                [U(:,k),infeasible]=ctrl{X(:,k),A,B,U(:,k-1)};
+            end                
         end          
     end
     
     disp(k)
-    %disp(infeasible)
+    disp(infeasible)
     if(k>=k_fault)
         U(1,k)=U(1,k-1);
     end
