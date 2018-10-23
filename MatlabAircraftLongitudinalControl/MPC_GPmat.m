@@ -57,7 +57,10 @@ U=zeros(2,stepNumber-1);
 X(:,1)=[1;1;1;1];
 U_0=[0;0];
 
-%matrix_ratio=zeros(2,stepNumber-1);
+%GP numbers
+inver_wid = 1/88;     %Magic number from Harsh
+noiseVar = 0;         %No noise here
+
 
 for k=1:stepNumber-1                    
     if(k<=k_switch) %We use a classic MPC =)
@@ -68,41 +71,73 @@ for k=1:stepNumber-1
         end
     
     
-    elseif k==k_switch+1                        %GP initialisation
-        z_test=create_X(-1:0.5:3,-2:0.5:2,-0.6:0.5:1,-1:0.5:2.1,-25:1:15,-10.4:0.5:4.6);           %A list of vector griding where the system should be   
-        kern = kernCreate(z_test, 'rbf');
-        
-        %kern.inverseWidth = 5; % Change inverse variance (1/(lengthScale^2)))
-        
-        yPred = zeros(size(z_test));
-        ySd = sqrt(kernDiagCompute(kern, z_test));
-        
-        [U(:,k),infeasible]=ctrl{X(:,k),A,B,U(:,k-1)}; %We are not yet ready to use new system
     
     else
+        % Kernel creation
         yTrain_1 =  X(1,k_fault+1:k-1)';
         yTrain_2 =  X(2,k_fault+1:k-1)';
         yTrain_3 =  X(3,k_fault+1:k-1)';
         yTrain_4 =  X(4,k_fault+1:k-1)';
-        zTrain =   [X(:,k_fault:k-2);U(:,k_fault:k-2)]';
-        
-        kern = kernCreate(z_test, 'rbf');
-        
+        zTrain =   [X(:,k_fault+1:k-1);U(:,k_fault+1:k-1)]';  
             
-        %kern.inverseWidth = 5;% Change inverse variance (1/(lengthScale^2)))
+        trueKer_1 = kernCreate(zTrain, 'rbf');
+        trueKer_1.inverseWidth = 1/inver_wid;
+        %trueKer_1.variance = 39.49;
         
-         Kz = kernCompute(kern, z_test, zTrain);
-         Ktrain = kernCompute(kern, zTrain, zTrain);
+        trueKer_2 = kernCreate(zTrain, 'rbf');
+        trueKer_2.inverseWidth = 1/inver_wid;
+        %trueKer_2.variance = 39.49;
         
-        yPred_1 = Kz*pdinv(Ktrain)*yTrain_1;   %noiseVar=0 here
-        yVar_2 = kernDiagCompute(kern, z_test) - sum(Kz*pdinv(Ktrain).*Kz, 2);  %noiseVar=0 here
-        ySd = sqrt(yVar_2);
+        trueKer_3 = kernCreate(zTrain, 'rbf');
+        trueKer_3.inverseWidth = 1/inver_wid;
+        %trueKer_3.variance = 39.49;   
+        
+        trueKer_4 = kernCreate(zTrain, 'rbf');
+        trueKer_4.inverseWidth = 1/inver_wid;
+        %trueKer_4.variance = 39.49;        
+  
+        
+        %Determine A_k and B_k:
+        
+        A_k = [GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_1, trueKer_1, noiseVar);... 
+            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_2, trueKer_2, noiseVar);... 
+            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_3, trueKer_3, noiseVar);... 
+            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_4, trueKer_4, noiseVar)];
+        
+        B_k=[GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_1, trueKer_1, noiseVar);...
+            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_2, trueKer_2, noiseVar);... 
+            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_3, trueKer_3, noiseVar);... 
+            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_4, trueKer_4, noiseVar)];
+        
+        %Model validation
+        error_nominal=mean(vecnorm( X(:,k_fault:k)-A*X(:,k_fault-1:k-1)+B*U(:,k_fault-1:k-1) ));
+        error_GP=mean(vecnorm( X(:,k_fault:k)-A_k*X(:,k_fault-1:k-1)+B_k*U(:,k_fault-1:k-1) ));
+        
+%         error_GP=zeros(1,k-k_fault);
+%         for i=k_fault:k
+%             estimation=[GP_SE_mean_var( [X(:,i-1)',U(:,i-1)'], zTrain, yTrain_1, trueKer_1, noiseVar);
+%                 GP_SE_mean_var( [X(:,i-1)',U(:,i-1)'], zTrain, yTrain_2, trueKer_2, noiseVar);...
+%                 GP_SE_mean_var( [X(:,i-1)',U(:,i-1)'], zTrain, yTrain_3, trueKer_3, noiseVar);...
+%                 GP_SE_mean_var( [X(:,i-1)',U(:,i-1)'], zTrain, yTrain_4, trueKer_4, noiseVar)];
+%             
+%             
+%             error_GP(i+1-k_fault)=norm( X(:,i) - estimation );
+%         end
+%         error_GP=mean(error_GP);
         
         
+        if error_GP < 10* error_nominal
+            disp('Model Validated')
+            k
+            [U(:,k),infeasible]=ctrl{X(:,k),A_k,B_k,U(:,k-1)};
+        else
+            [U(:,k),infeasible]=ctrl{X(:,k),A,B,U(:,k-1)};
+        end 
+    
     end
             
-    disp(k)
-    disp(infeasible)
+    %disp(k)
+    %disp(infeasible)
     if(k>=k_fault)
         U(1,k)=U(1,k-1);
     end
@@ -110,7 +145,7 @@ for k=1:stepNumber-1
 end
 
 
-
+%%
 %%PLOT :D
 t=Ts*(0:stepNumber-1);
 figure
