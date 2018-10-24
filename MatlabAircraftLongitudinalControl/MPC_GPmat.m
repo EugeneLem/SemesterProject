@@ -58,7 +58,7 @@ X(:,1)=[1;1;1;1];
 U_0=[0;0];
 
 %GP numbers
-inver_wid = 1/88;     %Magic number from Harsh
+inver_wid = 5;     %Magic number from Harsh 88
 noiseVar = 0;         %No noise here
 
 
@@ -104,14 +104,20 @@ for k=1:stepNumber-1
             GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_3, trueKer_3, noiseVar);... 
             GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_4, trueKer_4, noiseVar)];
         
+%         A_k_10 = 10*[GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_1, trueKer_1, noiseVar);... 
+%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_2, trueKer_2, noiseVar);... 
+%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_3, trueKer_3, noiseVar);... 
+%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_4, trueKer_4, noiseVar)];
+%         
+        
         B_k=[GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_1, trueKer_1, noiseVar);...
             GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_2, trueKer_2, noiseVar);... 
             GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_3, trueKer_3, noiseVar);... 
             GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_4, trueKer_4, noiseVar)];
         
         %Model validation
-        error_nominal=mean(vecnorm( X(:,k_fault:k)-A*X(:,k_fault-1:k-1)+B*U(:,k_fault-1:k-1) ));
-        error_GP=mean(vecnorm( X(:,k_fault:k)-A_k*X(:,k_fault-1:k-1)+B_k*U(:,k_fault-1:k-1) ));
+        error_nominal=mean(vecnorm( X(:,k_fault:k)-A*X(:,k_fault-1:k-1)-B*U(:,k_fault-1:k-1) ));
+        error_GP=mean(vecnorm( X(:,k_fault:k)-A_k*X(:,k_fault-1:k-1)-B_k*U(:,k_fault-1:k-1) ));
         
 %         error_GP=zeros(1,k-k_fault);
 %         for i=k_fault:k

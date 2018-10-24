@@ -17,7 +17,10 @@ function [GP_mu,GP_var] = GP_SE_mean_var(x, x_train, y_train, trueKern, noiseVar
 K_cost = kernCompute(trueKern, x_train) + eye(size(x_train, 1))*noiseVar;
 k_star_cost = kernCompute(trueKern, x(:,:), x_train);
 % The means of the prediction
-pdinv_K_cost = pdinv(K_cost);
+    
+%pdinv_K_cost = pdinv(K_cost);
+                pdinv_K_cost = inv(K_cost);
+
 alpha = pdinv_K_cost*y_train;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
