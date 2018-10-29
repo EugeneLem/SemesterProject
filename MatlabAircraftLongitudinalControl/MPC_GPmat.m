@@ -19,13 +19,13 @@ P_k=zeros(6,6);
 horizon=20;
 Ts=0.2;
 %constraint
-C_u=[1 0 ; 0,1 ; -1,0 ; 0,-1];
-c_u=[15;4.6;25;10.4];%Need to check is elevator and THS are not inverted
-C_u_delta=[-1 0   1 0;...
+C_u = [1 0 ; 0,1 ; -1,0 ; 0,-1];
+c_u = [15;4.6;25;10.4];%Need to check is elevator and THS are not inverted
+C_u_delta = [-1 0   1 0;...
             0 -1  0 1;...
             1  0 -1 0;...
             0  1  0 -1];
-c_u_delta=[37;0.236;37;0.236]*Ts;%Need to check is elevator and THS are not inverted
+c_u_delta = [37;0.236;37;0.236]*Ts;%Need to check is elevator and THS are not inverted
 
 %%MPC
 x=sdpvar(4,horizon);
@@ -34,7 +34,7 @@ A_k=sdpvar(4,4);
 B_k=sdpvar(4,2);
 u_old=sdpvar(2,1);%For the input change constraint, we need the 0 input
 ops = sdpsettings('solver', 'gurobi', 'verbose', 0);
-con=[C_u_delta*[u_old;u(:,1)] <= c_u_delta];
+con = [C_u_delta*[u_old;u(:,1)] <= c_u_delta];
 obj = 0;   
 for i = 1:horizon-1 
     con = [con , x(:,i+1) == A_k*x(:,i) + B_k*u(:,i)]; % System dynamics
@@ -43,8 +43,29 @@ for i = 1:horizon-1
     obj = obj + x(:,i)'*Q*x(:,i) + u(:,i)'*R*u(:,i) + (u(:,i+1)-u(:,i))'*R_delta*(u(:,i+1)-u(:,i));  % Cost function
 
 end
-obj=obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
+obj = obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
 ctrl = optimizer(con, obj,ops, {x(:,1),A_k,B_k,u_old}, u(:,1));      
+
+
+%%MPC with GP
+x=sdpvar(4,horizon);
+u=sdpvar(2,horizon);
+% A_k=sdpvar(4,4);
+% B_k=sdpvar(4,2);
+u_old=sdpvar(2,1);%For the input change constraint, we need the 0 input
+ops = sdpsettings('solver', 'gurobi', 'verbose', 0);
+con = [C_u_delta*[u_old;u(:,1)] <= c_u_delta];
+obj = 0;   
+for i = 1:horizon-1 
+    con = [con , x(:,i+1) == A_k*x(:,i) + B_k*u(:,i)]; % System dynamics
+    con = [con , C_u*u(:,i) <= c_u];                 % Input constraints
+    con = [con , C_u_delta*[u(:,i);u(:,i+1)] <= c_u_delta];  % Input change constraints
+    obj = obj + x(:,i)'*Q*x(:,i) + u(:,i)'*R*u(:,i) + (u(:,i+1)-u(:,i))'*R_delta*(u(:,i+1)-u(:,i));  % Cost function
+
+end
+obj = obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
+ctrl = optimizer(con, obj,ops, {x(:,1),A_k,B_k,u_old}, u(:,1));      
+
 
 
 
@@ -59,7 +80,7 @@ U_0=[0;0];
 
 %GP numbers
 inver_wid = 5;     %Magic number from Harsh 88
-noiseVar = 0;         %No noise here
+noiseVar = 0.3;         %No noise here
 
 
 for k=1:stepNumber-1                    
@@ -82,38 +103,32 @@ for k=1:stepNumber-1
             
         trueKer_1 = kernCreate(zTrain, 'rbf');
         trueKer_1.inverseWidth = 1/inver_wid;
-        %trueKer_1.variance = 39.49;
+        trueKer_1.variance = 39.49;
         
         trueKer_2 = kernCreate(zTrain, 'rbf');
         trueKer_2.inverseWidth = 1/inver_wid;
-        %trueKer_2.variance = 39.49;
+        trueKer_2.variance = 39.49;
         
         trueKer_3 = kernCreate(zTrain, 'rbf');
         trueKer_3.inverseWidth = 1/inver_wid;
-        %trueKer_3.variance = 39.49;   
+        trueKer_3.variance = 39.49;   
         
         trueKer_4 = kernCreate(zTrain, 'rbf');
         trueKer_4.inverseWidth = 1/inver_wid;
-        %trueKer_4.variance = 39.49;        
+        trueKer_4.variance = 39.49;        
   
         
         %Determine A_k and B_k:
         
-        A_k = [GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_1, trueKer_1, noiseVar);... 
-            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_2, trueKer_2, noiseVar);... 
-            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_3, trueKer_3, noiseVar);... 
-            GP_SE_mean_var([1,0,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,1,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,1,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,1,0,0], zTrain, yTrain_4, trueKer_4, noiseVar)];
+        M = [GP_SE_Derivative([X(:,k-1);U(:,k-1)]', zTrain, yTrain_1, trueKer_1, noiseVar)';...
+            GP_SE_Derivative([X(:,k-1);U(:,k-1)]', zTrain, yTrain_2, trueKer_2, noiseVar)';...
+            GP_SE_Derivative([X(:,k-1);U(:,k-1)]', zTrain, yTrain_3, trueKer_3, noiseVar)';...
+            GP_SE_Derivative([X(:,k-1);U(:,k-1)]', zTrain, yTrain_4, trueKer_4, noiseVar)';...
+];
         
-%         A_k_10 = 10*[GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_1, trueKer_1, noiseVar);... 
-%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_2, trueKer_2, noiseVar);... 
-%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_3, trueKer_3, noiseVar);... 
-%             GP_SE_mean_var([0.1,0,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0.1,0,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0.1,0,0,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,0.1,0,0], zTrain, yTrain_4, trueKer_4, noiseVar)];
-%         
+        A_k=M(:,1:4);
+        B_k=M(:,5:6);
         
-        B_k=[GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_1, trueKer_1, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_1, trueKer_1, noiseVar);...
-            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_2, trueKer_2, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_2, trueKer_2, noiseVar);... 
-            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_3, trueKer_3, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_3, trueKer_3, noiseVar);... 
-            GP_SE_mean_var([0,0,0,0,1,0], zTrain, yTrain_4, trueKer_4, noiseVar), GP_SE_mean_var([0,0,0,0,0,1], zTrain, yTrain_4, trueKer_4, noiseVar)];
         
         %Model validation
         error_nominal=mean(vecnorm( X(:,k_fault:k)-A*X(:,k_fault-1:k-1)-B*U(:,k_fault-1:k-1) ));
@@ -132,7 +147,7 @@ for k=1:stepNumber-1
 %         error_GP=mean(error_GP);
         
         
-        if error_GP < 10* error_nominal
+        if error_GP < 10
             disp('Model Validated')
             k
             [U(:,k),infeasible]=ctrl{X(:,k),A_k,B_k,U(:,k-1)};

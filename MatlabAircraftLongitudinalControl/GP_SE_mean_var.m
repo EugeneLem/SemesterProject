@@ -1,10 +1,5 @@
 function [GP_mu,GP_var] = GP_SE_mean_var(x, x_train, y_train, trueKern, noiseVar)
 % Compute mean and variance of GP with squared exponential kernel, 
-% 
-% WARNING!: Only works for  x  is only one testing point meaning for many testing point
-% this function needs to be called in the loop
-% WARNING!: Current implementation is only for scalar, needs to  be
-% extended for ND dimension of input case
 %
 % x : testing point
 % x_train: training inputs
@@ -18,8 +13,7 @@ K_cost = kernCompute(trueKern, x_train) + eye(size(x_train, 1))*noiseVar;
 k_star_cost = kernCompute(trueKern, x(:,:), x_train);
 % The means of the prediction
     
-%pdinv_K_cost = pdinv(K_cost);
-                pdinv_K_cost = inv(K_cost);
+pdinv_K_cost = pdinv(K_cost);
 
 alpha = pdinv_K_cost*y_train;
 
