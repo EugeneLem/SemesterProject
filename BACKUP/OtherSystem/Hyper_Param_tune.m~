@@ -1,0 +1,45 @@
+clear all;
+load('data_for_opti.mat') %Data from a simulation with no GP
+
+
+params = hyperparameters('fitrgp',Z,Y_1);
+params(4).Range = [10^(-4),10];
+params(4).Optimize = true;
+gprMdl = fitrgp(Z, Y_1, 'OptimizeHyperparameters', params);
+gprMdl_1 = fitrgp(Z,Y_1,'KernelFunction','squaredexponential',...
+    'OptimizeHyperparameters','auto','HyperparameterOptimizationOptions',...
+    struct('AcquisitionFunctionName','expected-improvement-plus'));
+
+
+% gprMdl_1 = fitrgp(Z,Y_1','KernelFunction','squaredexponential');
+% gprMdl_2 = fitrgp(Z,Y_2','KernelFunction','squaredexponential');
+% gprMdl_3 = fitrgp(Z,Y_3','KernelFunction','squaredexponential');
+% gprMdl_4 = fitrgp(Z,Y_4','KernelFunction','squaredexponential');
+% 
+% params = hyperparameters('fitrgp',Z,Y_1);
+% params(4).Range = [1,10];
+% params(4).Optimize = true;
+% gprMdl = fitrgp(Z, Y_1, 'OptimizeHyperparameters', params);
+% gprMdl.KernelInformation.KernelParameters
+% 
+% 
+% gprMdl_1.KernelInformation.KernelParameters
+% gprMdl_2.KernelInformation.KernelParameters
+% gprMdl_3.KernelInformation.KernelParameters
+% gprMdl_4.KernelInformation.KernelParameters
+
+% 
+% meanfunc = [];                    
+% covfunc = @covSEiso;              % Squared Exponental covariance function
+% likfunc = @likGauss;              % Gaussian likelihood
+% 
+% hyp_0 = struct('mean', [], 'cov', [9.314588383482750 6.890117306424340], 'lik', -9.267609631095468);
+% hyp_1 = minimize(hyp_0, @gp, -100, @infGaussLik, meanfunc, covfunc, likfunc, Z, Y_1);
+% hyp_2 = minimize(hyp_0, @gp, -100, @infGaussLik, meanfunc, covfunc, likfunc, Z, Y_1);
+% hyp_3 = minimize(hyp_0, @gp, -100, @infGaussLik, meanfunc, covfunc, likfunc, Z, Y_1);
+% hyp_4 = minimize(hyp_0, @gp, -100, @infGaussLik, meanfunc, covfunc, likfunc, Z, Y_1);
+% 
+% 
+% % % trueKer_1 = kernCreate(Z, 'rbf');
+% % % %trueKer_1.inverseWidth = inver_wid *ones(1,1);
+% % % %trueKer_1.variance = model_var;        %Value found with GP from matlab toolbox
