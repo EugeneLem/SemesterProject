@@ -1,0 +1,7 @@
+load('Data_noFault.mat') 
+
+lb = [0, -inf, -inf];
+ub = [inf , inf, inf];
+
+
+x = fmincon(@(z) NW_cost(z, Z, Y_1, L2NW_case) , , [], [], [], [], lb, ub);

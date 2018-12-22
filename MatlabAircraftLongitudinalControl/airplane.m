@@ -6,13 +6,13 @@ import casadi.*
 opti = casadi.Opti();   
 
 
-do_noFault = true;                 %list of calculation we want to do:
-do_Fault = true;
+do_noFault = false;                 %list of calculation we want to do:
+do_Fault = false;
 do_Fault_perfect = true;
 do_Fault_GP = true;
-do_Fault_GP_moreData = true;
-do_Fault_GP_allData = true;
-do_L2NW_1 = true;
+do_Fault_GP_moreData = false;
+do_Fault_GP_allData = false;
+do_L2NW_1 = false;
 do_L2NW_GP = true;
 
 
@@ -41,7 +41,8 @@ Ts=0.2;
 
 
 Q_huge = blkdiag(kron(eye(horizon-1), Q),P_k(1:4,1:4));
-R_huge = blkdiag(kron(eye(horizon-1), R(2,2)),P_k(6,6));
+R_huge = blkdiag(kron(eye(horizon-1), R(2,2)),P_k(6,6)); %Only P_k(6,6) because we only are interrested in u(2), and other at 0
+R_delta_huge = blkdiag(kron(eye(horizon-1), R_delta(2,2)));
 
 %constraint
 C_u = [1,0 ; 0,1 ; -1,0 ; 0,-1];        %Constraint on input
@@ -103,7 +104,7 @@ ctrl_broken = optimizer(con_hat, obj_hat,ops, {x_hat(:,1),u_old_hat, A_k, B_k, d
 
 %%
 %% Simulation constant =====================================================
-stepNumber = 20;       %HERE
+stepNumber = 1000;       %HERE
 k_fault=2;               %We initialize everything to zero
 k_switch = k_fault+2;
 X0 = [1;0.1;1;1];
@@ -158,6 +159,7 @@ U_Fault_L2NWGP = zeros(2,stepNumber-1);
 X_Fault_L2NWGP(:,1) = X0;
 u_Fault_L2NWGP(:,1) = U0;
 error_L2NWGP = zeros(4,stepNumber-1);
+z_new = zeros(4,horizon+5);
 
 %% ==System simu =============================================================
 
@@ -488,7 +490,7 @@ for k=1:stepNumber-1
             [U_Fault_L2NWGP(:,k),infeasible] = ctrl_nominal{X_Fault_L2NWGP(:,k),[U_Fault_L2NWGP(1,k_fault-1);U_Fault_L2NWGP(2,k-1)]};
             X_Fault_L2NWGP(:,k+1)=A*X_Fault_L2NWGP(:,k)+B*[U_Fault_L2NWGP(1,k_fault-1);U_Fault_L2NWGP(2,k)];
         else
-            lambda = zeros(1,4);
+%            lambda =    1.0e+04 *[0.012019754710583   0.000000001163038   0.051193113634863   1.169673566912831];
             %lambda =    1.0e+05 *[0.000000451025780   7.979889364022138   0.024365540051243   0.086369157185887];
              %lambda =      1.0e+06 *[0.000000045105253   1.372971685457147   0.001704647349413   0.004564597558218];
     %         sigma_f = 2.17*10^(3)*ones(1,4);
@@ -500,12 +502,16 @@ for k=1:stepNumber-1
     %             sigma_l, sigma_f, lambda;...
     %             sigma_l, sigma_f, lambda;];
                 %sigmaL sigmaF lambda
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
-%             sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
-%             sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
-    %         sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
-    %         sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
+%             sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
+%             sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
+%            sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
+%            sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
+%             sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
+%             sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
+    
+             lambda =   1.0e+03 *[0.015057967475948   0.000000000000000   0.000058076268171   2.322405248187593];
+             sigma_f = 1.0e+03 *[1.582316765283923   1.582652272111788   1.577400679165022   1.580491446453652];
+             sigma_l = [0.538574767893800   0.209855794078267   0.332415674193124   0.623141835431038];
 
             param = [sigma_l(1), sigma_f(1), lambda(1);...
                 sigma_l(2), sigma_f(2), lambda(2);...
@@ -514,11 +520,11 @@ for k=1:stepNumber-1
 
 
             data_number_l2 = 100;
-            Y_L2NW_1GP = [X_Fault_L2NWGP(1,k_fault+1:k-1)'; Y_1(end -data_number_l2-1+k:end)];
-            Y_L2NW_2GP = [X_Fault_L2NWGP(2,k_fault+1:k-1)'; Y_1(end -data_number_l2-1+k:end)];
-            Y_L2NW_3GP = [X_Fault_L2NWGP(3,k_fault+1:k-1)'; Y_1(end -data_number_l2-1+k:end)];
-            Y_L2NW_4GP = [X_Fault_L2NWGP(4,k_fault+1:k-1)'; Y_1(end -data_number_l2-1+k:end)];
-            Z_L2NW_GP = [X_Fault_L2NWGP(:,k_fault:k-2)', U_Fault_L2NWGP(2,k_fault:k-2)';  Z( end -data_number_l2-1+k:end,:)];
+            Y_L2NW_1GP = [X_Fault_L2NWGP(1,k_fault+1:k-1)'];%; Y_1(end -data_number_l2-1+k:end)];
+            Y_L2NW_2GP = [X_Fault_L2NWGP(2,k_fault+1:k-1)'];%; Y_1(end -data_number_l2-1+k:end)];
+            Y_L2NW_3GP = [X_Fault_L2NWGP(3,k_fault+1:k-1)'];%; Y_1(end -data_number_l2-1+k:end)];
+            Y_L2NW_4GP = [X_Fault_L2NWGP(4,k_fault+1:k-1)'];%; Y_1(end -data_number_l2-1+k:end)];
+            Z_L2NW_GP = [X_Fault_L2NWGP(:,k_fault:k-2)', U_Fault_L2NWGP(2,k_fault:k-2)'];%;  Z( end -data_number_l2-1+k:end,:)];
             
 
 
@@ -532,45 +538,68 @@ for k=1:stepNumber-1
             error_L2NWGP(:,k) = abs(X_Fault_L2NWGP(:,k) -  X_estimation_L2NWGP);
 
             if  max(error_L2NWGP(:,k)) < 300
-                %Casadi problem: 
-                opti = casadi.Opti();
-                opti.subject_to; %clean the constraint?
-                opti.variable;
+%                 %Casadi problem: 
+%                 opti = casadi.Opti();
+%                 opti.subject_to; %clean the constraint?
+%                 opti.variable;
+%                 
+%                 tic
+%                 x_tild = opti.variable(4, horizon);
+%                 u_tild = opti.variable(1, horizon);
+% 
+%                 u_old = opti.parameter(1,1);
+%                 x_0 = opti.parameter(4,1);
+% 
+% 
+%                 opti.subject_to( x_tild(:,1) == x_0);
+%                 opti.subject_to( C_u_delta_redu*[u_old;u_tild(1)] <= c_u_delta_redu )
+%                 for i = 1:horizon-1
+%                     opti.subject_to( C_u_redu*u_tild(:,i) <= c_u_redu );
+%                     opti.subject_to( C_u_delta_redu*[u_tild(i);u_tild(i+1)] <= c_u_delta_redu );
+%                     opti.subject_to( x_tild(:,i+1) ==  [L2NW_mean([x_tild(:,i)',u_tild(i)] , Z_L2NW_GP, Y_L2NW_1GP, param(1,:), 3);...
+%                         L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_2GP, param(2,:), 3);...
+%                         L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_3GP, param(3,:), 3);...
+%                         L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_4GP, param(4,:), 3)]);
+% 
+%                 end
+%                 opti.minimize(x_tild(:)'*Q_huge*x_tild(:) + u_tild(:)'*R_huge*u_tild(:) +...
+%                     (u_tild(2:end)-u_tild(1:end-1))*R_delta_huge*(u_tild(2:end)-u_tild(1:end-1))' );
+% 
+%                 ops = struct;
+%                 ops.ipopt.print_level = 0;
+%                 ops.ipopt.tol = 1e-3;
+%                 opti.solver('ipopt', ops);
+% 
+% 
+%                 opti.set_value(x_0,X_Fault_L2NWGP(:,k));
+%                 opti.set_value(u_old,U_Fault_L2NWGP(2,k));
+%                 sol = opti.solve();
+%                 U_Fault_L2NWGP(2,k) = sol.value(u_tild(1));
+%                 U_Fault_L2NWGP(1,k) = U_Fault_L2NWGP(1,k-1);        %there is a fault
+%                 toc
+%                 %end cadasi
                 
-                tic
-                x_tild = opti.variable(4, horizon);
-                u_tild = opti.variable(1, horizon);
-
-                u_old = opti.parameter(1,1);
-                x_0 = opti.parameter(4,1);
-
-
-                opti.subject_to( x_tild(:,1) == x_0);
-                opti.subject_to( C_u_delta_redu*[u_old;u_tild(1)] <= c_u_delta_redu )
-                for i = 1:horizon-1
-                    opti.subject_to( C_u_redu*u_tild(:,i) <= c_u_redu );
-                    opti.subject_to( C_u_delta_redu*[u_tild(i);u_tild(i+1)] <= c_u_delta_redu );
-                    opti.subject_to( x_tild(:,i+1) ==  [L2NW_mean([x_tild(:,i)',u_tild(i)] , Z_L2NW_GP, Y_L2NW_1GP, param(1,:), 3);...
-                        L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_2GP, param(2,:), 3);...
-                        L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_3GP, param(3,:), 3);...
-                        L2NW_mean([x_tild(:,i)',u_tild(i)], Z_L2NW_GP, Y_L2NW_4GP, param(4,:), 3)]);
-
+                %define Fmincon problem
+                
+                C_ineq_2_2 = zeros(2*horizon-2,horizon); %the end of C_ineq matrix
+                for i=1:horizon-1
+                    C_ineq_2_2(2*i-1:2*i,i:i+1)  = C_u_delta_redu;
+                    
                 end
-                opti.minimize(x_tild(:)'*Q_huge*x_tild(:) + u_tild(:)'*R_huge*u_tild(:));
+                
+                C_ineq = [zeros(4*horizon-2, 4*horizon),...
+                    [kron(eye(horizon),C_u_redu);C_ineq_2_2]];
+                c_ineq = [kron(ones(horizon,1), c_u_redu); kron(ones(horizon-1,1), c_u_delta_redu)];
 
-                ops = struct;
-                ops.ipopt.print_level = 0;
-                ops.ipopt.tol = 1e-3;
-                opti.solver('ipopt', ops);
-
-
-                opti.set_value(x_0,X_Fault_L2NWGP(:,k));
-                opti.set_value(u_old,U_Fault_L2NWGP(2,k));
-                sol = opti.solve();
-                U_Fault_L2NWGP(2,k) = sol.value(u_tild(1));
+                
+                z_old = z_new;
+                z_new = fmincon(@(z) MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),...  %@(z) MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),
+                    z_old , C_ineq , c_ineq , [], [], [], [],...
+                    @(z) MPC_constraitn(z, horizon, X_Fault_L2NWGP(2,k), U_Fault_L2NWGP(2,k-1), Z, Y_1, Y_2, Y_3, Y_4, lambda, sigma_f, sigma_l) ); 
+                
+                U_Fault_L2NWGP(2,k) = z_new(2,horizon+1);
                 U_Fault_L2NWGP(1,k) = U_Fault_L2NWGP(1,k-1);        %there is a fault
-                toc
-                %end cadasi
+                %end FminconProblem
                 
                 
 

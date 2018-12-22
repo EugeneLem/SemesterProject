@@ -14,9 +14,8 @@ switch type
             sig_F = param(2);
             lambda = param(3);
             kfcn = @(XN,XM,sigmaF, L) (sigmaF^2)*exp(-(pdist2(XN,XM).^2)/(2*L^2));
-            m = sum(kfcn(z_star,Z_train,sig_F, sig_L).*Y_train')/ (lambda+sum(kfcn(z_star,Z_train,sig_F, sig_L)));
+            m = sum(kfcn(z_star,Z_train,sig_L, sig_F).*Y_train')/ (lambda+sum(kfcn(z_star,Z_train,sig_L, sig_F)));
         case 3
-            
         %Casadi Adaptation of case 2
             sig_L = param(1);
             sig_F = param(2);
@@ -29,7 +28,7 @@ switch type
             end
             
             kfcn_cas = @(dist,sigmaF, L) (sigmaF^2)*exp(-(dist)/(2*L^2));
-            m = sum(kfcn_cas(dist2,sig_F, sig_L).*Y_train)/ (lambda+sum(kfcn_cas(dist2, sig_F, sig_L)));
+            m = sum(kfcn_cas(dist2,sig_L, sig_F).*Y_train)/ (param(3)+sum(kfcn_cas(dist2,param(1), param(2))));
 
 
 end
