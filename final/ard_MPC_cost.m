@@ -1,4 +1,4 @@
-function cost = MPC_cost(var, horizon, Q, R, R_delta)
+function cost = ard_MPC_cost(var, horizon, Q, R, R_delta)
 %var = [x(1,k=1), ... , x(1, k=h), u2(1), ...,  u2(17)]
 %      [x(2,k=1), ... , x(2, k=h), u2(2), ...,  u2(18)]
 %      [x(3,k=1), ... , x(3, k=h), u2(3), ...,  u2(19)]
