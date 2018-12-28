@@ -9,10 +9,10 @@ do_Fault                = false;
 do_Fault_perfect        = true;
 do_Fault_GP             = false;
 do_Fault_GP_moreData    = false;
-do_L2NW_GP              = true;
+do_L2NW_GP              = false;
 do_Fault_GPard          = false;
 do_Fault_GPard_moreData = false;
-do_L2NW_GPard           = false;
+do_L2NW_GPard           = true;
 
 %% System Constant==========================================================
 %System
@@ -55,6 +55,17 @@ C_u_redu = [ 1 ; -1];       %redu are when we only regulate one input: no need t
 c_u_redu = [4.6;10.4];
 C_u_delta_redu = [-1  1; 1  -1];
 c_u_delta_redu = [0.236; 0.236]*Ts;
+
+%Inequality constraint for fmincon
+C_ineq_2_2 = zeros(2*horizon-2,horizon); %the end of C_ineq matrix
+for i=1:horizon-1
+    C_ineq_2_2(2*i-1:2*i,i:i+1)  = C_u_delta_redu;
+
+end
+
+C_ineq = [zeros(4*horizon-2, 4*horizon),...
+    [kron(eye(horizon),C_u_redu);C_ineq_2_2]];
+c_ineq = [kron(ones(horizon,1), c_u_redu); kron(ones(horizon-1,1), c_u_delta_redu)];
 
 %% Nominal MPC =============================================================
 
@@ -229,33 +240,22 @@ for k=1:stepNumber-1
             Y_GP_4 = X_Fault_GP(4,k_fault+1:k-1)';
             Z_GP = [X_Fault_GP(:,k_fault:k-2)', U_Fault_GP(2,k_fault:k-2)'];
 
-            noisevar = 0.000001;
-    %         sigma_f = 2.17*10^(3)*ones(1,4);
-    %         sigma_l = 1.14*10^(4)*ones(1,4);
-    %         sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
-    %         sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
-            %noisevar = 0.00000001;
-%             sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
-%             sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
-            %         
-            X_estimation = [ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))];
-
-
+            %hyperParameters
+            noisevar = 1.0e-07 * [ 0.819920219120628   0.000049368579611   0.222888489932055   0.013943756158247];
+            sigma_f = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+            sigma_l = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+            
+            
             error_GP(:,k) = abs(X_estimation-X_Fault_GP(:,k)) ;
 
 %             if  max(error_GP(:,k)) < 0.1 %For testin purpose, the model
 %             is always validated
 %     %            disp("Validated")
 
-            AB_k = [ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))'
+            AB_k = [ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar(4), sigma_f(3), sigma_l(3))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))'
                 ];
             A_k = AB_k(:,1:4);
             B_k = [zeros(4,1), AB_k(:,5)];
@@ -304,22 +304,18 @@ for k=1:stepNumber-1
 
             
             
-            noisevar = 0.000001;
-    %         sigma_f = 2.17*10^(3)*ones(1,4);
-    %         sigma_l = 1.14*10^(4)*ones(1,4);
-    %         sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
-    %         sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
-            %noisevar = 0.00000001;
-%             sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
-%             sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
-            %   
+            %hyperParameters
+            noisevar = 1.0e-07 * [ 0.819920219120628   0.000049368579611   0.222888489932055   0.013943756158247];
+            sigma_f = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+            sigma_l = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+            error_GP(:,k) = abs(X_estimation-X_Fault_GP(:,k)) ; 
             
-            X_estimation = [ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))];
+            
+            
+            X_estimation = [ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar(3), sigma_f(3), sigma_l(3));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))];
 
 
             error_GP_moreData(:,k) = abs(X_estimation-X_Fault_GP_moreData(:,k)) ;
@@ -536,19 +532,7 @@ for k=1:stepNumber-1
 
             error_L2NWGP(:,k) = abs(X_Fault_L2NWGP(:,k) -  X_estimation_L2NWGP);
 
-%             if  max(error_L2NWGP(:,k)) < 300 %considered always validated
-
-                
-            C_ineq_2_2 = zeros(2*horizon-2,horizon); %the end of C_ineq matrix
-            for i=1:horizon-1
-                C_ineq_2_2(2*i-1:2*i,i:i+1)  = C_u_delta_redu;
-            end
-
-            C_ineq = [zeros(4*horizon-2-2, 4*horizon),...     %linear inquality constraint
-                [ [zeros(2*(horizon-1), 1), kron(eye(horizon-1), C_u_redu)]; C_ineq_2_2]];
-            c_ineq = [kron(ones(horizon-1,1), c_u_redu); kron(ones(horizon-1,1), c_u_delta_redu)]; %linear inquality constraint
-
-
+%             if  max(error_L2NWGP(:,k)) < 300 %considered always validate
             z_old = z_new;
             options = optimoptions('fmincon','MaxFunctionEvaluations',9000);
             z_new = fmincon(@(z) ard_MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),...  %@(z) MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),
@@ -606,10 +590,10 @@ for k=1:stepNumber-1
             
 
 
-            X_estimation_L2NWGP_ard = [ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_1GP,param(1,:),2);...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_2GP,param(2,:),2);...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_3GP,param(3,:),2);...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_4GP,param(4,:),2)...
+            X_estimation_L2NWGP_ard = [ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_1GP,param(1,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_2GP,param(2,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_3GP,param(3,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_4GP,param(4,:))...
                 ];
 
 
@@ -619,22 +603,13 @@ for k=1:stepNumber-1
             %validated
                 
                 %define Fmincon problem
-                
-            C_ineq_2_2 = zeros(2*horizon-2,horizon); %the end of C_ineq matrix
-            for i=1:horizon-1
-                C_ineq_2_2(2*i-1:2*i,i:i+1)  = C_u_delta_redu;
-
-            end
-
-            C_ineq = [zeros(4*horizon-2, 4*horizon),...
-                [kron(eye(horizon),C_u_redu);C_ineq_2_2]];
-            c_ineq = [kron(ones(horizon,1), c_u_redu); kron(ones(horizon-1,1), c_u_delta_redu)];
-
-
-            z_old = z_new_ard;
+          z_old = z_new_ard;
+            options = optimoptions('fmincon','MaxFunctionEvaluations',9000);
             z_new_ard = fmincon(@(z) ard_MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),...  %@(z) MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),
                 z_old , C_ineq , c_ineq , [], [], [], [],...
-                @(z) ard_MPC_constraitn(z, horizon, X_Fault_L2NWGP_ard(:,k), U_Fault_L2NWGP_ard(2,k-1), Z_L2NW_GP, Y_L2NW_1GP, Y_L2NW_2GP, Y_L2NW_3GP, Y_L2NW_4GP, lambda, sigma_f, sigma_l) ); 
+                @(z) ard_MPC_constraitn(z, horizon, X_Fault_L2NWGP_ard(:,k), U_Fault_L2NWGP_ard(2,k-1),...
+                Z_L2NW_GP_ard, Y_L2NW_1GP_ard, Y_L2NW_2GP_ard, Y_L2NW_3GP_ard, Y_L2NW_4GP_ard,...
+                lambda, sigma_f, sigma_l), options ); 
 
             U_Fault_L2NWGP_ard(2,k) = z_new_ard(2,horizon+1);
             U_Fault_L2NWGP_ard(1,k) = U_Fault_L2NWGP_ard(1,k-1);        %there is a fault
@@ -642,7 +617,7 @@ for k=1:stepNumber-1
 
 
 
-%             X_Fault_L2NWGP_ard(:,k+1)=A*X_Fault_L2NWGP_ard(:,k)+B*[U_Fault_L2NWGP_ard(1,k_fault-1);U_Fault_L2NWGP_ard(2,k)];
+            X_Fault_L2NWGP_ard(:,k+1)=A*X_Fault_L2NWGP_ard(:,k)+B*[U_Fault_L2NWGP_ard(1,k_fault-1);U_Fault_L2NWGP_ard(2,k)];
 %             
 %             else
 %                 disp('L2NW2  NOT validated')
@@ -830,8 +805,6 @@ if do_L2NW_GPard == true
     leg = [leg, "Fault with gaussian seard L2NW model"];
 end
 legend(leg)
-
-
 %% error --------------------------------------------------------------------------
 figure
 hold on
@@ -950,3 +923,6 @@ if do_L2NW_GPard == true
     leg = [leg, "Fault with gaussian seard L2NW model"];
 end
 legend(leg)
+
+
+

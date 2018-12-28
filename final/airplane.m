@@ -7,12 +7,12 @@ Z = Z(:, [1,2,3,4,6]);   %For faulty actuator, we do not want the first input
 do_noFault              = false;   %list of calculation we want to do:
 do_Fault                = false;
 do_Fault_perfect        = true;
-do_Fault_GP             = false;
-do_Fault_GP_moreData    = false;
+do_Fault_GP             = true;
+do_Fault_GP_moreData    = true;
 do_L2NW_GP              = false;
-do_Fault_GPard          = false;
+do_Fault_GPard          = true;
 do_Fault_GPard_moreData = false;
-do_L2NW_GPard           = true;
+do_L2NW_GPard           = false;
 
 %% System Constant==========================================================
 %System
@@ -109,7 +109,7 @@ obj_hat = obj_hat+[u_hat(:,horizon);x_hat(:,horizon)]'*P_k*[u_hat(:,horizon);x_h
 ctrl_broken = optimizer(con_hat, obj_hat,ops, {x_hat(:,1),u_old_hat, A_k, B_k, d_k}, u_hat(:,1));
 
 %% Simulation constant =====================================================
-stepNumber = 300;       %HERE
+stepNumber = 1000;       %HERE
 k_fault=2;               %We initialize everything to zero
 k_switch = k_fault+2;
 X0 = [1;0.1;1;1];
@@ -240,22 +240,15 @@ for k=1:stepNumber-1
             Y_GP_4 = X_Fault_GP(4,k_fault+1:k-1)';
             Z_GP = [X_Fault_GP(:,k_fault:k-2)', U_Fault_GP(2,k_fault:k-2)'];
 
-            noisevar = 0.000001;
-    %         sigma_f = 2.17*10^(3)*ones(1,4);
-    %         sigma_l = 1.14*10^(4)*ones(1,4);
-    %         sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
-    %         sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
-            %noisevar = 0.00000001;
-%             sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
-%             sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
-            %         
-            X_estimation = [ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3));...
-                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))];
-
+            %hyperParameters
+            noisevar = 1.0e-07 * [ 0.819920219120628   0.000049368579611   0.222888489932055   0.013943756158247];
+            sigma_f = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+            sigma_l = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+            
+            X_estimation = [ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1));...
+                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2));...
+                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar(3), sigma_f(3), sigma_l(3));...
+                ard_SE_mean([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))];
 
             error_GP(:,k) = abs(X_estimation-X_Fault_GP(:,k)) ;
 
@@ -263,10 +256,10 @@ for k=1:stepNumber-1
 %             is always validated
 %     %            disp("Validated")
 
-            AB_k = [ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3))';...
-                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))'
+            AB_k = [ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_3, noisevar(4), sigma_f(3), sigma_l(3))';...
+                ard_SE_deriv([X_Fault_GP(:,k-1)', U_Fault_GP(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))'
                 ];
             A_k = AB_k(:,1:4);
             B_k = [zeros(4,1), AB_k(:,5)];
@@ -315,22 +308,18 @@ for k=1:stepNumber-1
 
             
             
-            noisevar = 0.000001;
-    %         sigma_f = 2.17*10^(3)*ones(1,4);
-    %         sigma_l = 1.14*10^(4)*ones(1,4);
-    %         sigma_f = [1.677582380126192, 80.087113811947248, 1.371605612665715, 6.573873522600369];
-    %         sigma_l = [10.695781461698118, 99.935986868827754,  9.046354763354064, 32.505687565655741];
-            %noisevar = 0.00000001;
-%             sigma_f =[  20.575591520093276,  17.878167302000445,  16.199466399148097,  17.938357317647856];
-%             sigma_l =[  99.966954902978543,  34.241347755939984,  78.546996930435938,  88.147249188528974];
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396];
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501];
-            %   
+            %hyperParameters
+            noisevar = 1.0e-07 * [ 0.819920219120628   0.000049368579611   0.222888489932055   0.013943756158247];
+            sigma_f = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+            sigma_l = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+            error_GP(:,k) = abs(X_estimation-X_Fault_GP(:,k)) ; 
             
-            X_estimation = [ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3));...
-                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))];
+            
+            
+            X_estimation = [ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar(3), sigma_f(3), sigma_l(3));...
+                ard_SE_mean([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))];
 
 
             error_GP_moreData(:,k) = abs(X_estimation-X_Fault_GP_moreData(:,k)) ;
@@ -339,10 +328,10 @@ for k=1:stepNumber-1
 %             validated
 %     %            disp("Validated")
 
-            AB_k_moreData = [ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar, sigma_f(1), sigma_l(1))';...
-                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar, sigma_f(2), sigma_l(2))';...
-                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar, sigma_f(3), sigma_l(3))';...
-                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar, sigma_f(4), sigma_l(4))'
+            AB_k_moreData = [ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_1, noisevar(1), sigma_f(1), sigma_l(1))';...
+                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_2, noisevar(2), sigma_f(2), sigma_l(2))';...
+                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_3, noisevar(3), sigma_f(3), sigma_l(3))';...
+                ard_SE_deriv([X_Fault_GP_moreData(:,k-1)', U_Fault_GP_moreData(2,k-1)], Z_GP, Y_GP_4, noisevar(4), sigma_f(4), sigma_l(4))'
                 ];
             A_k_moreData = AB_k_moreData(:,1:4);
             B_k_moreData = [zeros(4,1), AB_k_moreData(:,5)];
@@ -384,15 +373,19 @@ for k=1:stepNumber-1
             Y_GPard_4 = X_Fault_GPard(4,k_fault+1:k-1)';
             Z_GPard = [X_Fault_GPard(:,k_fault:k-2)', U_Fault_GPard(2,k_fault:k-2)'];
 
-            noisevar = 0.000001;
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396]; %size: 1x4
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501].*ones(5,1); %size: 5x4
+            noisevar =    [0.207011434638091   0.000000000000001   0.000094523372256   0.343759797264307];
+            sigma_f = 1.0e+04 *[2.194029301409157   0.000679426763797   0.012952170231516   0.161567940482987];   %size: 1x4
+            sigma_l = 1.0e+04 *[0.000043747217450   0.000480105759101   0.000223044213263   0.289137996468431;...
+               0.032001534848036   0.012923707339206   0.000932019413174   0.046571952813509;...
+               0.882266280783226   0.000801113645661   0.000475033609572   0.000337744140758;...
+               1.103686370914297   0.000849685860101   0.000218644426045   0.000178486596270;...
+               2.575208850697990   0.000745400599946   0.013843884467876   0.033374538994487]; %size: 5x4
 
                    
-            X_estimation = [ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_1, noisevar, sigma_f(1), sigma_l(:,1));...
-                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_2, noisevar, sigma_f(2), sigma_l(:,2));...
-                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_3, noisevar, sigma_f(3), sigma_l(:,3));...
-                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_4, noisevar, sigma_f(4), sigma_l(:,4))];
+            X_estimation = [ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_1, noisevar(1), sigma_f(1), sigma_l(:,1));...
+                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_2, noisevar(2), sigma_f(2), sigma_l(:,2));...
+                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_3, noisevar(3), sigma_f(3), sigma_l(:,3));...
+                ard_SE_mean([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_4, noisevar(4), sigma_f(4), sigma_l(:,4))];
 
 
             error_GPard(:,k) = abs(X_estimation-X_Fault_GPard(:,k)) ;
@@ -401,10 +394,10 @@ for k=1:stepNumber-1
 %             validated
     %            disp("Validated")
 
-            AB_k = [ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_1, noisevar, sigma_f(1), sigma_l(:,1))';...
-                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_2, noisevar, sigma_f(2), sigma_l(:,2))';...
-                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_3, noisevar, sigma_f(3), sigma_l(:,3))';...
-                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_4, noisevar, sigma_f(4), sigma_l(:,4))'
+            AB_k = [ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_1, noisevar(1), sigma_f(1), sigma_l(:,1))';...
+                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_2, noisevar(2), sigma_f(2), sigma_l(:,2))';...
+                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_3, noisevar(3), sigma_f(3), sigma_l(:,3))';...
+                ard_SE_deriv([X_Fault_GPard(:,k-1)', U_Fault_GPard(2,k-1)], Z_GPard, Y_GPard_4, noisevar(4), sigma_f(4), sigma_l(:,4))'
                 ];
             A_k = AB_k(:,1:4);
             B_k = [zeros(4,1), AB_k(:,5)];
@@ -448,14 +441,19 @@ for k=1:stepNumber-1
 
             
             
-            noisevar = 0.000001;
-            sigma_f =   1.0e+02 *[ 2.639696625733967   0.170294093647814   0.085880808896654   0.101553751261396]; %size: 1x4
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501].*ones(5,1); %size: 5x4
-       
-            X_estimation = [ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_1, noisevar, sigma_f(1), sigma_l(:,1));...
-                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_2, noisevar, sigma_f(2), sigma_l(:,2));...
-                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_3, noisevar, sigma_f(3), sigma_l(:,3));...
-                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_4, noisevar, sigma_f(4), sigma_l(:,4))];
+            noisevar =    [0.207011434638091   0.000000000000001   0.000094523372256   0.343759797264307];
+            sigma_f = 1.0e+04 *[2.194029301409157   0.000679426763797   0.012952170231516   0.161567940482987];   %size: 1x4
+            sigma_l = 1.0e+04 *[0.000043747217450   0.000480105759101   0.000223044213263   0.289137996468431;...
+                   0.032001534848036   0.012923707339206   0.000932019413174   0.046571952813509;...
+                   0.882266280783226   0.000801113645661   0.000475033609572   0.000337744140758;...
+                   1.103686370914297   0.000849685860101   0.000218644426045   0.000178486596270;...
+                   2.575208850697990   0.000745400599946   0.013843884467876   0.033374538994487]; %size: 5x4  
+
+
+            X_estimation = [ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_1, noisevar(1), sigma_f(1), sigma_l(:,1));...
+                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_2, noisevar(2), sigma_f(2), sigma_l(:,2));...
+                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_3, noisevar(3), sigma_f(3), sigma_l(:,3));...
+                ard_SE_mean([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_4, noisevar(4), sigma_f(4), sigma_l(:,4))];
 
 
             error_GPard_moreData(:,k) = abs(X_estimation-X_Fault_GPard_moreData(:,k)) ;
@@ -464,10 +462,10 @@ for k=1:stepNumber-1
 %             validated
 %     %            disp("Validated")
 
-            AB_k_moreData = [ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_1, noisevar, sigma_f(1), sigma_l(:,1))';...
-                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_2, noisevar, sigma_f(2), sigma_l(:,2))';...
-                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_3, noisevar, sigma_f(3), sigma_l(:,3))';...
-                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_4, noisevar, sigma_f(4), sigma_l(:,4))'
+            AB_k_moreData = [ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_1, noisevar(1), sigma_f(1), sigma_l(:,1))';...
+                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_2, noisevar(2), sigma_f(2), sigma_l(:,2))';...
+                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_3, noisevar(3), sigma_f(3), sigma_l(:,3))';...
+                ard_SE_deriv([X_Fault_GPard_moreData(:,k-1)', U_Fault_GPard_moreData(2,k-1)], Z_GPard, Y_GPard_4, noisevar(4), sigma_f(4), sigma_l(:,4))'
                 ];
             A_k_moreData = AB_k_moreData(:,1:4);
             B_k_moreData = [zeros(4,1), AB_k_moreData(:,5)];
