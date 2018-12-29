@@ -1,0 +1,590 @@
+format long
+
+
+%% System Constant==========================================================
+%System
+A=[0.86719   ,6.6936*10^(-5)     ,-0.19095  ,0; ...
+    -0.027773, 0.99895           , 0.89264, -1.9609; ...
+      0.20146, -2.1676*10^(-4)     , 0.88379,  0; ...
+      0.2    ,  0                  ,  0      , 1];
+  
+B=[-3.7758 *10^(-3)  , -9.0408*10^(-3);...
+    0                ,0;...
+      -1.2629*10^(-4), -3.2794*10^(-4);...
+     0              ,0];
+ 
+%Cost function 
+Q=diag([34.38, 0, 0, 103.13]);
+R=zeros(2,2);
+R_delta=diag([0.02,10]);
+P_k=zeros(6,6);
+
+%horizon
+horizon=20;
+Ts=0.2;
+
+
+Q_huge = blkdiag(kron(eye(horizon-1), Q),P_k(1:4,1:4));
+R_huge = blkdiag(kron(eye(horizon-1), R(2,2)),P_k(6,6)); %Only P_k(6,6) because we only are interrested in u(2), and other at 0
+R_delta_huge = blkdiag(kron(eye(horizon-1), R_delta(2,2)));
+
+%constraint
+C_u = [1,0 ; 0,1 ; -1,0 ; 0,-1];        %Constraint on input
+c_u = [15;4.6;25;10.4]; 
+C_u_delta = [-1 0   1 0;...
+            0 -1  0 1;...
+            1  0 -1 0;...
+            0  1  0 -1];
+c_u_delta = [37;0.236;37;0.236]*Ts;% constraint on input change rate
+
+
+C_u_redu = [ 1 ; -1];       %redu are when we only regulate one input: no need to constraint the stuck one
+c_u_redu = [4.6;10.4];
+C_u_delta_redu = [-1  1; 1  -1];
+c_u_delta_redu = [0.236; 0.236]*Ts;
+
+%Inequality constraint for fmincon
+C_ineq_2_2 = zeros(2*horizon-2,horizon); %the end of C_ineq matrix
+for i=1:horizon-1
+    C_ineq_2_2(2*i-1:2*i,i:i+1)  = C_u_delta_redu;
+
+end
+
+C_ineq = [zeros(4*horizon-2, 4*horizon),...
+    [kron(eye(horizon),C_u_redu);C_ineq_2_2]];
+c_ineq = [kron(ones(horizon,1), c_u_redu); kron(ones(horizon-1,1), c_u_delta_redu)];
+
+%% Nominal MPC =============================================================
+
+x=sdpvar(4,horizon);
+u=sdpvar(2,horizon);
+u_old=sdpvar(2,1);%For the input change constraint, we need the 0 input
+%ops = sdpsettings( 'verbose', 0);
+ops = sdpsettings('solver', 'mosek','verbose', 0);
+con = C_u_delta*[u_old;u(:,1)] <= c_u_delta;    %First input change rate constraint
+obj = 0;   
+for i = 1:horizon-1 
+    con = [con , x(:,i+1) == A*x(:,i) + B*u(:,i)];          % System dynamics
+    con = [con , C_u*u(:,i) <= c_u];                        % Input constraints
+    con = [con , C_u_delta*[u(:,i);u(:,i+1)] <= c_u_delta]; % Input change constraints
+    obj = obj + x(:,i)'*Q*x(:,i) + u(:,i)'*R*u(:,i) + (u(:,i+1)-u(:,i))'*R_delta*(u(:,i+1)-u(:,i));  % Cost function
+
+end
+obj = obj+[u(:,horizon);x(:,horizon)]'*P_k*[u(:,horizon);x(:,horizon)];
+ctrl_nominal = optimizer(con, obj,ops, {x(:,1),u_old}, u(:,1));    
+
+%% Broken MPC =============================================================
+%for when we linearize the system
+x_hat=sdpvar(4,horizon);
+u_hat=sdpvar(2,horizon);
+A_k_A = sdpvar(4,4,'full');       %Now the identified matrix are input of the problem
+B_k_A = sdpvar(4,2);
+d_k_A = sdpvar(4,1);
+u_old_hat=sdpvar(2,1);%For the input change constraint, we need the 0 input
+%ops = sdpsettings( 'verbose', 0);
+ops = sdpsettings('solver', 'mosek','verbose', 0);
+con_hat = C_u_delta*[u_old_hat;u_hat(:,1)] <= c_u_delta;
+obj_hat = 0;   
+for i = 1:horizon-1 
+    con_hat = [con_hat , x_hat(:,i+1) == A_k_A*x_hat(:,i) + B_k_A*u_hat(:,i) + d_k_A]; % System dynamics
+    con_hat = [con_hat , C_u*u_hat(:,i) <= c_u];                 % Input constraints
+    con_hat = [con_hat , C_u_delta*[u_hat(:,i);u_hat(:,i+1)] <= c_u_delta];  % Input change constraints
+    obj_hat = obj_hat + x_hat(:,i)'*Q*x_hat(:,i) + u_hat(:,i)'*R*u_hat(:,i) + (u_hat(:,i+1)-u_hat(:,i))'*R_delta*(u_hat(:,i+1)-u_hat(:,i));  % Cost function
+
+end
+obj_hat = obj_hat+[u_hat(:,horizon);x_hat(:,horizon)]'*P_k*[u_hat(:,horizon);x_hat(:,horizon)];
+ctrl_broken = optimizer(con_hat, obj_hat,ops, {x_hat(:,1),u_old_hat, A_k_A, B_k_A, d_k_A}, u_hat(:,1));
+
+%% Simulation constant =====================================================
+stepNumber = 1000;       %HERE
+k_fault=2;               %We initialize everything to zero
+k_switch = k_fault+2;
+X0 = [1;0.1;1;1];
+U0=[0;0];
+
+
+X_Fault_GP_A = zeros(4,stepNumber); 
+U_Fault_GP_A = zeros(2,stepNumber-1); 
+X_Fault_GP_A(:,1) = X0;
+U_Fault_GP_A(:,1) = U0;
+error_GP_A = zeros(4,stepNumber-1);
+error_mat_GP_A = zeros(1,stepNumber-1);
+noisevar_A = 1.0e-07 * [ 0.819920219120628   0.000049368579611   0.222888489932055   0.013943756158247];
+sigma_f_A = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+sigma_l_A = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+
+X_Fault_GP_B = zeros(4,stepNumber); 
+U_Fault_GP_B = zeros(2,stepNumber-1); 
+X_Fault_GP_B(:,1) = X0;
+U_Fault_GP_B(:,1) = U0;
+error_GP_B = zeros(4,stepNumber-1);
+error_mat_GP_B = zeros(1,stepNumber-1);
+noisevar_B = noisevar_A*1.2; 
+sigma_f_B = sigma_f_A*1.2; 
+sigma_l_B = sigma_l_A*1.2;
+
+X_Fault_GP_C = zeros(4,stepNumber); 
+U_Fault_GP_C = zeros(2,stepNumber-1); 
+X_Fault_GP_C(:,1) = X0;
+U_Fault_GP_C(:,1) = U0;
+error_GP_C = zeros(4,stepNumber-1);
+error_mat_GP_C = zeros(1,stepNumber-1);
+noisevar_C = noisevar_A*0.8; 
+sigma_f_C = sigma_f_A*0.8; 
+sigma_l_C = sigma_l_A*0.8;
+
+
+X_Fault_GP_D = zeros(4,stepNumber); 
+U_Fault_GP_D = zeros(2,stepNumber-1); 
+X_Fault_GP_D(:,1) = X0;
+U_Fault_GP_D(:,1) = U0;
+error_GP_D = zeros(4,stepNumber-1);
+error_mat_GP_D = zeros(1,stepNumber-1);
+noisevar_D = 1.0e-06 * ones(1,4);
+sigma_f_D = 1.0e+03 *[1.083289684800573   0.009040478282701   0.009999700200313   0.009997077666096];
+sigma_l_D = 1.0e+03 *[2.595789568810230   3.881067542862866   0.009999004618254   0.010000727078402];
+
+%% ==System simu =============================================================
+
+for k=1:stepNumber-1                    
+        %Hyperparameter A
+    if k==1
+        [U_Fault_GP_A(:,k),infeasible] = ctrl_nominal{X_Fault_GP_A(:,k),U0};
+        X_Fault_GP_A(:,k+1)=A*X_Fault_GP_A(:,k)+B*U_Fault_GP_A(:,k);
+    elseif k < k_fault
+        [U_Fault_GP_A(:,k),infeasible]=ctrl_nominal{X_Fault_GP_A(:,k),U_Fault_GP_A(:,k-1)};
+        X_Fault_GP_A(:,k+1)=A*X_Fault_GP_A(:,k)+B*U_Fault_GP_A(:,k);
+    elseif k < k_switch
+        [U_Fault_GP_A(:,k),infeasible] = ctrl_nominal{X_Fault_GP_A(:,k),[U_Fault_GP_A(1,k_fault-1);U_Fault_GP_A(2,k-1)]};
+        X_Fault_GP_A(:,k+1)=A*X_Fault_GP_A(:,k)+B*[U_Fault_GP_A(1,k_fault-1);U_Fault_GP_A(2,k)];
+    else
+        Y_GP_1_A = X_Fault_GP_A(1,k_fault+1:k-1)';
+        Y_GP_2_A = X_Fault_GP_A(2,k_fault+1:k-1)';
+        Y_GP_3_A = X_Fault_GP_A(3,k_fault+1:k-1)';
+        Y_GP_4_A = X_Fault_GP_A(4,k_fault+1:k-1)';
+        Z_GP_A = [X_Fault_GP_A(:,k_fault:k-2)', U_Fault_GP_A(2,k_fault:k-2)'];
+
+
+        X_estimation_A = [ard_SE_mean([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_1_A, noisevar_A(1), sigma_f_A(1), sigma_l_A(1));...
+            ard_SE_mean([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_2_A, noisevar_A(2), sigma_f_A(2), sigma_l_A(2));...
+            ard_SE_mean([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_3_A, noisevar_A(3), sigma_f_A(3), sigma_l_A(3));...
+            ard_SE_mean([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_4_A, noisevar_A(4), sigma_f_A(4), sigma_l_A(4))];
+
+        error_GP_A(:,k) = abs(X_estimation_A-X_Fault_GP_A(:,k)) ;
+        AB_k_A = [ard_SE_deriv([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_1_A, noisevar_A(1), sigma_f_A(1), sigma_l_A(1))';...
+            ard_SE_deriv([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_2_A, noisevar_A(2), sigma_f_A(2), sigma_l_A(2))';...
+            ard_SE_deriv([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_3_A, noisevar_A(4), sigma_f_A(3), sigma_l_A(3))';...
+            ard_SE_deriv([X_Fault_GP_A(:,k-1)', U_Fault_GP_A(2,k-1)], Z_GP_A, Y_GP_4_A, noisevar_A(4), sigma_f_A(4), sigma_l_A(4))'
+            ];
+        A_k_A = AB_k_A(:,1:4);
+        B_k_A = [zeros(4,1), AB_k_A(:,5)];
+        d_k_A = X_Fault_GP_A(:,k) - (A_k_A*X_Fault_GP_A(:,k-1) + B_k_A*U_Fault_GP_A(:,k-1));
+
+        error_mat_GP_A(k) = norm(A_k_A-A);
+
+
+        [U_Fault_GP_A(:,k),infeasible] = ctrl_broken{X_Fault_GP_A(:,k),[U_Fault_GP_A(1,k_fault-1);U_Fault_GP_A(2,k-1)], A_k_A, B_k_A, d_k_A};
+        X_Fault_GP_A(:,k+1)=A*X_Fault_GP_A(:,k)+B*[U_Fault_GP_A(1,k_fault-1);U_Fault_GP_A(2,k)];
+
+    end
+    
+        %Hyperparameter _B
+    if k==1
+        [U_Fault_GP_B(:,k),infeasible] = ctrl_nominal{X_Fault_GP_B(:,k),U0};
+        X_Fault_GP_B(:,k+1)=A*X_Fault_GP_B(:,k)+B*U_Fault_GP_B(:,k);
+    elseif k < k_fault
+        [U_Fault_GP_B(:,k),infeasible]=ctrl_nominal{X_Fault_GP_B(:,k),U_Fault_GP_B(:,k-1)};
+        X_Fault_GP_B(:,k+1)=A*X_Fault_GP_B(:,k)+B*U_Fault_GP_B(:,k);
+    elseif k < k_switch
+        [U_Fault_GP_B(:,k),infeasible] = ctrl_nominal{X_Fault_GP_B(:,k),[U_Fault_GP_B(1,k_fault-1);U_Fault_GP_B(2,k-1)]};
+        X_Fault_GP_B(:,k+1)=A*X_Fault_GP_B(:,k)+B*[U_Fault_GP_B(1,k_fault-1);U_Fault_GP_B(2,k)];
+    else
+        Y_GP_1_B = X_Fault_GP_B(1,k_fault+1:k-1)';
+        Y_GP_2_B = X_Fault_GP_B(2,k_fault+1:k-1)';
+        Y_GP_3_B = X_Fault_GP_B(3,k_fault+1:k-1)';
+        Y_GP_4_B = X_Fault_GP_B(4,k_fault+1:k-1)';
+        Z_GP_B = [X_Fault_GP_B(:,k_fault:k-2)', U_Fault_GP_B(2,k_fault:k-2)'];
+
+
+        X_estimation_B = [ard_SE_mean([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_1_B, noisevar_B(1), sigma_f_B(1), sigma_l_B(1));...
+            ard_SE_mean([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_2_B, noisevar_B(2), sigma_f_B(2), sigma_l_B(2));...
+            ard_SE_mean([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_3_B, noisevar_B(3), sigma_f_B(3), sigma_l_B(3));...
+            ard_SE_mean([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_4_B, noisevar_B(4), sigma_f_B(4), sigma_l_B(4))];
+
+        error_GP_B(:,k) = abs(X_estimation_B-X_Fault_GP_B(:,k)) ;
+        AB_k_B = [ard_SE_deriv([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_1_B, noisevar_B(1), sigma_f_B(1), sigma_l_B(1))';...
+            ard_SE_deriv([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_2_B, noisevar_B(2), sigma_f_B(2), sigma_l_B(2))';...
+            ard_SE_deriv([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_3_B, noisevar_B(4), sigma_f_B(3), sigma_l_B(3))';...
+            ard_SE_deriv([X_Fault_GP_B(:,k-1)', U_Fault_GP_B(2,k-1)], Z_GP_B, Y_GP_4_B, noisevar_B(4), sigma_f_B(4), sigma_l_B(4))'
+            ];
+        A_k_B = AB_k_B(:,1:4);
+        B_k_B = [zeros(4,1), AB_k_B(:,5)];
+        d_k_B = X_Fault_GP_B(:,k) - (A_k_B*X_Fault_GP_B(:,k-1) + B_k_B*U_Fault_GP_B(:,k-1));
+
+        error_mat_GP_B(k) = norm(A_k_B-A);
+
+
+        [U_Fault_GP_B(:,k),infeasible] = ctrl_broken{X_Fault_GP_B(:,k),[U_Fault_GP_B(1,k_fault-1);U_Fault_GP_B(2,k-1)], A_k_B, B_k_B, d_k_B};
+        X_Fault_GP_B(:,k+1)=A*X_Fault_GP_B(:,k)+B*[U_Fault_GP_B(1,k_fault-1);U_Fault_GP_B(2,k)];
+
+    end
+    
+%Hyperparameter _C
+    if k==1
+        [U_Fault_GP_C(:,k),infeasible] = ctrl_nominal{X_Fault_GP_C(:,k),U0};
+        X_Fault_GP_C(:,k+1)=A*X_Fault_GP_C(:,k)+B*U_Fault_GP_C(:,k);
+    elseif k < k_fault
+        [U_Fault_GP_C(:,k),infeasible]=ctrl_nominal{X_Fault_GP_C(:,k),U_Fault_GP_C(:,k-1)};
+        X_Fault_GP_C(:,k+1)=A*X_Fault_GP_C(:,k)+B*U_Fault_GP_C(:,k);
+    elseif k < k_switch
+        [U_Fault_GP_C(:,k),infeasible] = ctrl_nominal{X_Fault_GP_C(:,k),[U_Fault_GP_C(1,k_fault-1);U_Fault_GP_C(2,k-1)]};
+        X_Fault_GP_C(:,k+1)=A*X_Fault_GP_C(:,k)+B*[U_Fault_GP_C(1,k_fault-1);U_Fault_GP_C(2,k)];
+    else
+        Y_GP_1_C = X_Fault_GP_C(1,k_fault+1:k-1)';
+        Y_GP_2_C = X_Fault_GP_C(2,k_fault+1:k-1)';
+        Y_GP_3_C = X_Fault_GP_C(3,k_fault+1:k-1)';
+        Y_GP_4_C = X_Fault_GP_C(4,k_fault+1:k-1)';
+        Z_GP_C = [X_Fault_GP_C(:,k_fault:k-2)', U_Fault_GP_C(2,k_fault:k-2)'];
+
+
+        X_estimation_C = [ard_SE_mean([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_1_C, noisevar_C(1), sigma_f_C(1), sigma_l_C(1));...
+            ard_SE_mean([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_2_C, noisevar_C(2), sigma_f_C(2), sigma_l_C(2));...
+            ard_SE_mean([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_3_C, noisevar_C(3), sigma_f_C(3), sigma_l_C(3));...
+            ard_SE_mean([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_4_C, noisevar_C(4), sigma_f_C(4), sigma_l_C(4))];
+
+        error_GP_C(:,k) = abs(X_estimation_C-X_Fault_GP_C(:,k)) ;
+        AB_k_C = [ard_SE_deriv([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_1_C, noisevar_C(1), sigma_f_C(1), sigma_l_C(1))';...
+            ard_SE_deriv([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_2_C, noisevar_C(2), sigma_f_C(2), sigma_l_C(2))';...
+            ard_SE_deriv([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_3_C, noisevar_C(4), sigma_f_C(3), sigma_l_C(3))';...
+            ard_SE_deriv([X_Fault_GP_C(:,k-1)', U_Fault_GP_C(2,k-1)], Z_GP_C, Y_GP_4_C, noisevar_C(4), sigma_f_C(4), sigma_l_C(4))'
+            ];
+        A_k_C = AB_k_C(:,1:4);
+        B_k_C = [zeros(4,1), AB_k_C(:,5)];
+        d_k_C = X_Fault_GP_C(:,k) - (A_k_C*X_Fault_GP_C(:,k-1) + B_k_C*U_Fault_GP_C(:,k-1));
+
+        error_mat_GP_C(k) = norm(A_k_C-A);
+
+
+        [U_Fault_GP_C(:,k),infeasible] = ctrl_Croken{X_Fault_GP_C(:,k),[U_Fault_GP_C(1,k_fault-1);U_Fault_GP_C(2,k-1)], A_k_C, B_k_C, d_k_C};
+        X_Fault_GP_C(:,k+1)=A*X_Fault_GP_C(:,k)+B*[U_Fault_GP_C(1,k_fault-1);U_Fault_GP_C(2,k)];
+
+    end
+
+    
+        %Hyperparameter _D
+    if k==1
+        [U_Fault_GP_D(:,k),infeasible] = ctrl_nominal{X_Fault_GP_D(:,k),U0};
+        X_Fault_GP_D(:,k+1)=A*X_Fault_GP_D(:,k)+B*U_Fault_GP_D(:,k);
+    elseif k < k_fault
+        [U_Fault_GP_D(:,k),infeasible]=ctrl_nominal{X_Fault_GP_D(:,k),U_Fault_GP_D(:,k-1)};
+        X_Fault_GP_D(:,k+1)=A*X_Fault_GP_D(:,k)+B*U_Fault_GP_D(:,k);
+    elseif k < k_switch
+        [U_Fault_GP_D(:,k),infeasible] = ctrl_nominal{X_Fault_GP_D(:,k),[U_Fault_GP_D(1,k_fault-1);U_Fault_GP_D(2,k-1)]};
+        X_Fault_GP_D(:,k+1)=A*X_Fault_GP_D(:,k)+B*[U_Fault_GP_D(1,k_fault-1);U_Fault_GP_D(2,k)];
+    else
+        Y_GP_1_D = X_Fault_GP_D(1,k_fault+1:k-1)';
+        Y_GP_2_D = X_Fault_GP_D(2,k_fault+1:k-1)';
+        Y_GP_3_D = X_Fault_GP_D(3,k_fault+1:k-1)';
+        Y_GP_4_D = X_Fault_GP_D(4,k_fault+1:k-1)';
+        Z_GP_D = [X_Fault_GP_D(:,k_fault:k-2)', U_Fault_GP_D(2,k_fault:k-2)'];
+
+
+        X_estimation_D = [ard_SE_mean([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_1_D, noisevar_D(1), sigma_f_D(1), sigma_l_D(1));...
+            ard_SE_mean([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_2_D, noisevar_D(2), sigma_f_D(2), sigma_l_D(2));...
+            ard_SE_mean([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_3_D, noisevar_D(3), sigma_f_D(3), sigma_l_D(3));...
+            ard_SE_mean([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_4_D, noisevar_D(4), sigma_f_D(4), sigma_l_D(4))];
+
+        error_GP_D(:,k) = abs(X_estimation_D-X_Fault_GP_D(:,k)) ;
+        AB_k_D = [ard_SE_deriv([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_1_D, noisevar_D(1), sigma_f_D(1), sigma_l_D(1))';...
+            ard_SE_deriv([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_2_D, noisevar_D(2), sigma_f_D(2), sigma_l_D(2))';...
+            ard_SE_deriv([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_3_D, noisevar_D(4), sigma_f_D(3), sigma_l_D(3))';...
+            ard_SE_deriv([X_Fault_GP_D(:,k-1)', U_Fault_GP_D(2,k-1)], Z_GP_D, Y_GP_4_D, noisevar_D(4), sigma_f_D(4), sigma_l_D(4))'
+            ];
+        A_k_D = AB_k_D(:,1:4);
+        B_k_D = [zeros(4,1), AB_k_D(:,5)];
+        d_k_D = X_Fault_GP_D(:,k) - (A_k_D*X_Fault_GP_D(:,k-1) + B_k_D*U_Fault_GP_D(:,k-1));
+
+        error_mat_GP_D(k) = norm(A_k_D-A);
+
+
+        [U_Fault_GP_D(:,k),infeasible] = ctrl_Droken{X_Fault_GP_D(:,k),[U_Fault_GP_D(1,k_fault-1);U_Fault_GP_D(2,k-1)], A_k_D, B_k_D, d_k_D};
+        X_Fault_GP_D(:,k+1)=A*X_Fault_GP_D(:,k)+B*[U_Fault_GP_D(1,k_fault-1);U_Fault_GP_D(2,k)];
+
+    end    
+    
+   %% ---------------ALL----------------------------------
+    if mod(k,5) == 0
+        disp(k)
+    end
+    
+    
+end    
+    
+
+%% Plotting ================================================================
+t=Ts*(0:stepNumber-1);
+%% States
+figure
+hold on
+leg = [];
+
+subplot(4,1,1) %State 1
+hold on
+title('Pitch rate [rad/s]')
+xlabel('time s')
+plot(t,X_Fault_GP_A(1,:),'b-')
+plot(t,X_Fault_GP_A(1,:),'b-')   
+plot(t,X_Fault_GP_A(1,:),'b-')   
+plot(t,X_Fault_GP_(1,:),'b-')   
+
+
+subplot(4,1,2) %State 2-----------------
+hold on
+title('Air speed [m/s]')
+xlabel('time s')
+if do_noFault == true  
+    plot(t,X_noFault(2,:),'k-.')
+end
+if do_Fault == true
+    plot(t,X_Fault(2,:),'k:')
+end
+if do_Fault_perfect == true
+    plot(t,X_Fault_Perfect(2,:),'k-','LineWidth',2)
+end
+if do_Fault_GP == true
+    plot(t,X_Fault_GP_A(2,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t,X_Fault_GP_moreData(2,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t,X_Fault_L2NWGP(2,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t,X_Fault_GPard(2,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t,X_Fault_GPard_moreData(2,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t,X_Fault_L2NWGP_ard(2,:),'r:')
+end
+
+
+subplot(4,1,3) %State 3---------------
+hold on
+title('Pitch angle [rad]')
+xlabel('time s')
+if do_noFault == true  
+    plot(t,X_noFault(3,:),'k-.')
+end
+if do_Fault == true
+    plot(t,X_Fault(3,:),'k:')
+end
+if do_Fault_perfect == true
+    plot(t,X_Fault_Perfect(3,:),'k-','LineWidth',2)
+end
+if do_Fault_GP == true
+    plot(t,X_Fault_GP_A(3,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t,X_Fault_GP_moreData(3,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t,X_Fault_L2NWGP(3,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t,X_Fault_GPard(3,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t,X_Fault_GPard_moreData(3,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t,X_Fault_L2NWGP_ard(3,:),'r:')
+end
+
+    
+subplot(4,1,4) %State 4---------
+hold on
+title('Angle of attack [rad]')
+xlabel('time s')
+if do_noFault == true  
+    plot(t,X_noFault(4,:),'k-.')
+end
+if do_Fault == true
+    plot(t,X_Fault(4,:),'k:')
+end
+if do_Fault_perfect == true
+    plot(t,X_Fault_Perfect(4,:),'k-','LineWidth',2)
+end
+if do_Fault_GP == true
+    plot(t,X_Fault_GP_A(4,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t,X_Fault_GP_moreData(4,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t,X_Fault_L2NWGP(4,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t,X_Fault_GPard(4,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t,X_Fault_GPard_moreData(4,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t,X_Fault_L2NWGP_ard(4,:),'r:')
+end
+
+
+%legend:
+if do_noFault == true  
+    leg = [leg, "no Fault scenario"];
+end
+if do_Fault == true
+    leg = [leg, "Fault with nominal model"];
+end
+if do_Fault_perfect == true
+    leg = [leg, "Fault with perfect model"];
+end
+if do_Fault_GP == true
+    leg = [leg, "Fault with GP model"];    
+end
+if do_Fault_GP_moreData == true
+    leg = [leg, "Fault with GP model (with more data)"];
+end
+if do_L2NW_GP == true
+    leg = [leg, "Fault with gaussian L2NW model"];
+end
+if do_Fault_GPard == true
+    leg = [leg, "Fault with GPard model"];    
+end
+if do_Fault_GPard_moreData == true
+    leg = [leg, "Fault with GPard model (with more data)"];
+end
+if do_L2NW_GPard == true
+    leg = [leg, "Fault with gaussian seard L2NW model"];
+end
+legend(leg)
+%% error --------------------------------------------------------------------------
+figure
+hold on
+leg = [];
+
+subplot(4,1,1) %State 1
+hold on
+title('Error on pitch rate [rad/s]')
+xlabel('time s')
+ylim([0,0.00001])
+if do_Fault_GP == true
+    plot(t(1:end-1),error_GP_A(1,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),error_GP_moreData(1,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),error_L2NWGP(1,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),error_GPard(1,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),error_GPard_moreData(1,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),error_L2NWGP_ard(1,:),'r:')
+end
+
+subplot(4,1,2) %State 2-----------------
+hold on
+title('Error on air speed [m/s]')
+xlabel('time s')
+ylim([0,0.0001])
+if do_Fault_GP == true
+    plot(t(1:end-1),error_GP_A(2,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),error_GP_moreData(2,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),error_L2NWGP(2,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),error_GPard(2,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),error_GPard_moreData(2,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),error_L2NWGP_ard(2,:),'r:')
+end
+
+subplot(4,1,3) %State 3---------------
+hold on
+title('Error on pitch angle [rad]')
+xlabel('time s')
+ylim([0,0.001])
+if do_Fault_GP == true
+    plot(t(1:end-1),error_GP_A(3,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),error_GP_moreData(3,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),error_L2NWGP(3,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),error_GPard(3,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),error_GPard_moreData(3,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),error_L2NWGP_ard(3,:),'r:')
+end
+    
+subplot(4,1,4) %State 4---------
+hold on
+title('Error on angle of attack [rad]')
+xlabel('time s')
+ylim([0,0.001])
+if do_Fault_GP == true
+    plot(t(1:end-1),error_GP_A(4,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),error_GP_moreData(4,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),error_L2NWGP(4,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),error_GPard(4,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),error_GPard_moreData(4,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),error_L2NWGP_ard(4,:),'r:')
+end
+
+%legend:
+leg = [];
+if do_Fault_GP == true
+    leg = [leg, "Fault with GP model"];    
+end
+if do_Fault_GP_moreData == true
+    leg = [leg, "Fault with GP model (with more data)"];
+end
+if do_L2NW_GP == true
+    leg = [leg, "Fault with gaussian L2NW model"];
+end
+if do_Fault_GPard == true
+    leg = [leg, "Fault with GPard model"];    
+end
+if do_Fault_GPard_moreData == true
+    leg = [leg, "Fault with GPard model (with more data)"];
+end
+if do_L2NW_GPard == true
+    leg = [leg, "Fault with gaussian seard L2NW model"];
+end
+legend(leg)

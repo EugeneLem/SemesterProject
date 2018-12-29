@@ -6,7 +6,7 @@ Z = Z(:, [1,2,3,4,6]);   %For faulty actuator, we do not want the first input
 
 do_noFault              = false;   %list of calculation we want to do:
 do_Fault                = false;
-do_Fault_perfect        = true;
+do_Fault_perfect        = false;
 do_Fault_GP             = true;
 do_Fault_GP_moreData    = true;
 do_L2NW_GP              = false;
@@ -115,20 +115,20 @@ k_switch = k_fault+2;
 X0 = [1;0.1;1;1];
 U0=[0;0];
 
-X_noFault = zeros(4,stepNumber); 
-U_noFault=zeros(2,stepNumber-1); 
-X_noFault(:,1) = X0;
-U_noFault(:,1) = U0;
-
-X_Fault = zeros(4,stepNumber); 
-U_Fault = zeros(2,stepNumber-1); 
-X_Fault(:,1) = X0;
-U_Fault(:,1) = U0;
-
-X_Fault_Perfect = zeros(4,stepNumber); 
-U_Fault_Perfect = zeros(2,stepNumber-1); 
-X_Fault_Perfect(:,1) = X0;
-U_Fault_Perfect(:,1) = U0;
+% X_noFault = zeros(4,stepNumber); 
+% U_noFault=zeros(2,stepNumber-1); 
+% X_noFault(:,1) = X0;
+% U_noFault(:,1) = U0;
+% 
+% X_Fault = zeros(4,stepNumber); 
+% U_Fault = zeros(2,stepNumber-1); 
+% X_Fault(:,1) = X0;
+% U_Fault(:,1) = U0;
+% 
+% X_Fault_Perfect = zeros(4,stepNumber); 
+% U_Fault_Perfect = zeros(2,stepNumber-1); 
+% X_Fault_Perfect(:,1) = X0;
+% U_Fault_Perfect(:,1) = U0;
 
 X_Fault_GP = zeros(4,stepNumber); 
 U_Fault_GP = zeros(2,stepNumber-1); 
@@ -565,15 +565,20 @@ for k=1:stepNumber-1
             X_Fault_L2NWGP_ard(:,k+1)=A*X_Fault_L2NWGP_ard(:,k)+B*[U_Fault_L2NWGP_ard(1,k_fault-1);U_Fault_L2NWGP_ard(2,k)];
         else
 
-            lambda =   1.0e+03 *[0.015057967475948   0.000000000000000   0.000058076268171   2.322405248187593];
-            sigma_f =   1.0e+02 *[ 2.639696625733967,  0.170294093647814,   0.085880808896654,   0.101553751261396]; %size: 1x4
-            sigma_l =[ 99.991949107543803  25.640539532091616  34.284915666906144  25.862479178807501].*ones(5,1); %size: 5x4
+            lambda =     1.0e+03 *[1.455543128007772   0.000000000000001
+                0.865249329706008   0.007700284142739];
+            sigma_f2 =     1.0e+03 *[ 1.584160310465225   1.582760479010113   1.582919812162524   1.582541347721900]; %size: 1x4
+            sigma_l2 =  1.0e+03 *[1.454206567885842   0.000331156020930   0.590599646645230   0.006098649717990;...
+               0.000964946692309   0.000226992358221   0.000561657338271   0.000472731065963;...
+               0.175444781224309   0.007867196986228   0.044388834761815  -0.002571193069446;...
+               0.000057030705522  -0.000155566993686   0.000106365542096  -0.000063536431170;...
+              -0.000040030459786   0.001292079840159   0.000035331193726  -0.000035900590580]; %size: 5x4
        
 
-            param = [lambda(1), sigma_f(1), sigma_l(:,1)';...
-                lambda(2), sigma_f(2), sigma_l(:,2)';...
-                lambda(3), sigma_f(3), sigma_l(:,3)';...
-                lambda(4), sigma_f(4), sigma_l(:,4)'];
+            param = [lambda(1), sigma_f(1), sigma_l2(:,1)';...
+                lambda(2), sigma_f(2), sigma_l2(:,2)';...
+                lambda(3), sigma_f2(3), sigma_l2(:,3)';...
+                lambda(4), sigma_f2(4), sigma_l2(:,4)'];
 
 
             data_number_l2 = 100;
@@ -585,10 +590,10 @@ for k=1:stepNumber-1
             
 
 
-            X_estimation_L2NWGP_ard = [ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_1GP,param(1,:));...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_2GP,param(2,:));...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_3GP,param(3,:));...
-                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP,Y_L2NW_4GP,param(4,:))...
+            X_estimation_L2NWGP_ard = [ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP_ard,Y_L2NW_1GP_ard,param(1,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP_ard,Y_L2NW_2GP_ard,param(2,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP_ard,Y_L2NW_3GP_ard,param(3,:));...
+                ard_L2NW_mean([X_Fault_L2NWGP_ard(:,k-1)', U_Fault_L2NWGP_ard(2,k-1)],Z_L2NW_GP_ard,Y_L2NW_4GP_ard,param(4,:))...
                 ];
 
 
@@ -599,13 +604,15 @@ for k=1:stepNumber-1
                 
                 %define Fmincon problem
           z_old = z_new_ard;
-            options = optimoptions('fmincon','MaxFunctionEvaluations',9000);
+            options = optimoptions('fmincon','MaxFunctionEvaluations',30000);
+            tic
             z_new_ard = fmincon(@(z) ard_MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),...  %@(z) MPC_cost(z, horizon, Q_huge, R_huge, R_delta_huge),
                 z_old , C_ineq , c_ineq , [], [], [], [],...
                 @(z) ard_MPC_constraitn(z, horizon, X_Fault_L2NWGP_ard(:,k), U_Fault_L2NWGP_ard(2,k-1),...
                 Z_L2NW_GP_ard, Y_L2NW_1GP_ard, Y_L2NW_2GP_ard, Y_L2NW_3GP_ard, Y_L2NW_4GP_ard,...
                 lambda, sigma_f, sigma_l), options ); 
-
+            toc
+            
             U_Fault_L2NWGP_ard(2,k) = z_new_ard(2,horizon+1);
             U_Fault_L2NWGP_ard(1,k) = U_Fault_L2NWGP_ard(1,k-1);        %there is a fault
             %end FminconProblem
@@ -625,7 +632,8 @@ for k=1:stepNumber-1
     end
     
    %% ---------------ALL----------------------------------
-    if mod(k,10) == 0
+    if mod(k,5) == 0
+        save("result_29_L2NWard_bis","X_Fault_L2NWGP_ard","X_estimation_L2NWGP_ard", "U_Fault_L2NWGP_ard", "error_L2NWGP_ard")
         disp(k)
     end
     
@@ -640,9 +648,9 @@ figure
 hold on
 leg = [];
 
-subplot(2,2,1) %State 1
+subplot(4,1,1) %State 1
 hold on
-title('Pitch Angle [rad]')
+title('Pitch rate [rad/s]')
 xlabel('time s')
 if do_noFault == true  
     plot(t,X_noFault(1,:),'k-.')
@@ -672,7 +680,7 @@ if do_L2NW_GPard == true
     plot(t,X_Fault_L2NWGP_ard(1,:),'r:')
 end
 
-subplot(2,2,2) %State 2-----------------
+subplot(4,1,2) %State 2-----------------
 hold on
 title('Air speed [m/s]')
 xlabel('time s')
@@ -705,9 +713,9 @@ if do_L2NW_GPard == true
 end
 
 
-subplot(2,2,3) %State 3---------------
+subplot(4,1,3) %State 3---------------
 hold on
-title('Pitch rate [rad/s]')
+title('Pitch angle [rad]')
 xlabel('time s')
 if do_noFault == true  
     plot(t,X_noFault(3,:),'k-.')
@@ -738,7 +746,7 @@ if do_L2NW_GPard == true
 end
 
     
-subplot(2,2,4) %State 4---------
+subplot(4,1,4) %State 4---------
 hold on
 title('Angle of attack [rad]')
 xlabel('time s')
@@ -773,7 +781,7 @@ end
 
 %legend:
 if do_noFault == true  
-    leg = [leg, "no Fault scenaria"];
+    leg = [leg, "no Fault scenario"];
 end
 if do_Fault == true
     leg = [leg, "Fault with nominal model"];
@@ -805,10 +813,11 @@ figure
 hold on
 leg = [];
 
-subplot(2,2,1) %State 1
+subplot(4,1,1) %State 1
 hold on
-title('Error on pitch Angle [rad]')
+title('Error on pitch rate [rad/s]')
 xlabel('time s')
+ylim([0,0.00001])
 if do_Fault_GP == true
     plot(t(1:end-1),error_GP(1,:),'b-')    
 end
@@ -828,10 +837,11 @@ if do_L2NW_GPard == true
     plot(t(1:end-1),error_L2NWGP_ard(1,:),'r:')
 end
 
-subplot(2,2,2) %State 2-----------------
+subplot(4,1,2) %State 2-----------------
 hold on
 title('Error on air speed [m/s]')
 xlabel('time s')
+ylim([0,0.0001])
 if do_Fault_GP == true
     plot(t(1:end-1),error_GP(2,:),'b-')    
 end
@@ -851,10 +861,11 @@ if do_L2NW_GPard == true
     plot(t(1:end-1),error_L2NWGP_ard(2,:),'r:')
 end
 
-subplot(2,2,3) %State 3---------------
+subplot(4,1,3) %State 3---------------
 hold on
-title('Error on pitch rate [rad/s]')
+title('Error on pitch angle [rad]')
 xlabel('time s')
+ylim([0,0.001])
 if do_Fault_GP == true
     plot(t(1:end-1),error_GP(3,:),'b-')    
 end
@@ -874,10 +885,11 @@ if do_L2NW_GPard == true
     plot(t(1:end-1),error_L2NWGP_ard(3,:),'r:')
 end
     
-subplot(2,2,4) %State 4---------
+subplot(4,1,4) %State 4---------
 hold on
 title('Error on angle of attack [rad]')
 xlabel('time s')
+ylim([0,0.001])
 if do_Fault_GP == true
     plot(t(1:end-1),error_GP(4,:),'b-')    
 end
@@ -919,5 +931,103 @@ if do_L2NW_GPard == true
 end
 legend(leg)
 
+%% Inputs
+figure
+hold on
+leg = [];
 
+subplot(1,2,1) %State 1
+hold on
+title('Elevator')
+xlabel('time s')
+if do_noFault == true  
+    plot(t(1:end-1),U_noFault(1,:),'k-.')
+end
+if do_Fault == true
+    plot(t(1:end-1),U_Fault(1,:),'k:')
+end
+if do_Fault_perfect == true
+    plot(t(1:end-1),U_Fault_Perfect(1,:),'k-','LineWidth',2)
+end
+if do_Fault_GP == true
+    plot(t(1:end-1),U_Fault_GP(1,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),U_Fault_GP_moreData(1,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),U_Fault_L2NWGP(1,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),U_Fault_GPard(1,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),U_Fault_GPard_moreData(1,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),U_Fault_L2NWGP_ard(1,:),'r:')
+end
+
+subplot(1,2,2) %State 2-----------------
+hold on
+title('THS')
+xlabel('time s')
+if do_noFault == true  
+    plot(t(1:end-1),U_noFault(2,:),'k-.')
+end
+if do_Fault == true
+    plot(t(1:end-1),U_Fault(2,:),'k:')
+end
+if do_Fault_perfect == true
+    plot(t(1:end-1),U_Fault_Perfect(2,:),'k-','LineWidth',2)
+end
+if do_Fault_GP == true
+    plot(t(1:end-1),U_Fault_GP(2,:),'b-')    
+end
+if do_Fault_GP_moreData == true
+    plot(t(1:end-1),U_Fault_GP_moreData(2,:),'b-.')
+end
+if do_L2NW_GP == true
+    plot(t(1:end-1),U_Fault_L2NWGP(2,:),'b:')
+end
+if do_Fault_GPard == true
+    plot(t(1:end-1),U_Fault_GPard(2,:),'r-')    
+end
+if do_Fault_GPard_moreData == true
+    plot(t(1:end-1),U_Fault_GPard_moreData(2,:),'r-.')
+end
+if do_L2NW_GPard == true
+    plot(t(1:end-1),U_Fault_L2NWGP_ard(2,:),'r:')
+end
+
+
+%legend:
+if do_noFault == true  
+    leg = [leg, "no Fault scenario"];
+end
+if do_Fault == true
+    leg = [leg, "Fault with nominal model"];
+end
+if do_Fault_perfect == true
+    leg = [leg, "Fault with perfect model"];
+end
+if do_Fault_GP == true
+    leg = [leg, "Fault with GP model"];    
+end
+if do_Fault_GP_moreData == true
+    leg = [leg, "Fault with GP model (with more data)"];
+end
+if do_L2NW_GP == true
+    leg = [leg, "Fault with gaussian L2NW model"];
+end
+if do_Fault_GPard == true
+    leg = [leg, "Fault with GPard model"];    
+end
+if do_Fault_GPard_moreData == true
+    leg = [leg, "Fault with GPard model (with more data)"];
+end
+if do_L2NW_GPard == true
+    leg = [leg, "Fault with gaussian seard L2NW model"];
+end
+legend(leg)
 
